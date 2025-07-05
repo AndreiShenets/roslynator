@@ -176,7 +176,7 @@
   </Option>
   <Option Id="UnityCodeAnalysisEnabled">
     <Key>unity_code_analysis.enabled</Key>
-    <ValuePlaceholder>true|false</ValuePlaceholder> 
+    <ValuePlaceholder>true|false</ValuePlaceholder>
     <Description>Enable code analysis to detect Unity-specific code</Description>
   </Option>
   <Option Id="UseAnonymousFunctionOrMethodGroup">
@@ -244,6 +244,13 @@
       <Value>opening</Value>
       <Value>closing</Value>
       <Value>both</Value>
+    </Values>
+  </Option>
+  <Option Id="StructuralHonestyStrictness">
+    <Description>Define strict should be the algorithm of structural honesty</Description>
+    <Values>
+      <Value IsDefault="true">Strict</Value>
+      <Value>Tolerant</Value>
     </Values>
   </Option>
   <!--

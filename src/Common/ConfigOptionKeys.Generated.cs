@@ -35,6 +35,7 @@ namespace Roslynator
         public const string ObjectCreationParenthesesStyle                    = "roslynator_object_creation_parentheses_style";
         public const string ObjectCreationTypeStyle                           = "roslynator_object_creation_type_style";
         public const string PrefixFieldIdentifierWithUnderscore               = "roslynator_prefix_field_identifier_with_underscore";
+        public const string StructuralHonestyStrictness                       = "roslynator_structural_honesty_strictness";
         public const string SuppressUnityScriptMethods                        = "roslynator_suppress_unity_script_methods";
         public const string TabLength                                         = "roslynator_tab_length";
         public const string TargetBracesStyle                                 = "roslynator_target_braces_style";

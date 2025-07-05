@@ -183,6 +183,12 @@ namespace Roslynator
             defaultValuePlaceholder: "true|false", 
             description:             "Prefix field identifier with underscore");
 
+        public static readonly ConfigOptionDescriptor StructuralHonestyStrictness = new(
+            key:                     ConfigOptionKeys.StructuralHonestyStrictness, 
+            defaultValue:            "Strict", 
+            defaultValuePlaceholder: "Strict|Tolerant", 
+            description:             "Define strict should be the algorithm of structural honesty");
+
         [Obsolete("", error: false)]
         public static readonly ConfigOptionDescriptor SuppressUnityScriptMethods = new(
             key:                     ConfigOptionKeys.SuppressUnityScriptMethods, 

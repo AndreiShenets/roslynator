@@ -7894,6 +7894,77 @@ string s = """
     </Samples>
   </Analyzer>
   <Analyzer>
+    <Id>RCS1271</Id>
+    <Identifier>FixStructuralHonesty</Identifier>
+    <Title>Fix structural honesty</Title>
+    <DefaultSeverity>Info</DefaultSeverity>
+    <IsEnabledByDefault>false</IsEnabledByDefault>
+    <ConfigOptions>
+      <Option Key="structural_honesty_strictness" />
+    </ConfigOptions>
+    <Summary>
+      This analyzer ensure that "head" and "body" of code expression or definition are placed together
+    </Summary>
+    <Samples>
+      <Sample>
+        <Before><![CDATA[MyType myVariable = await MyMethodAsync(async (int a, int b, int c) =>
+{
+    // ...
+});
+
+Action<int, int, int> myAction = (int a, int b, int c) =>
+{
+    // ...
+};]]></Before>
+        <After><![CDATA[MyType myVariable =
+    await MyMethodAsync(
+        async (int a, int b, int c) =>
+        {
+            // ...
+        }
+    );
+
+Action<int, int, int> myAction =
+    (int a, int b, int c) =>
+    {
+        // ...
+    };]]></After>
+      </Sample>
+      <Sample>
+        <Before><![CDATA[MyType myVariable = await MyMethodAsync(new MyType()
+{
+    Property1 = value1,
+    Property2 = value2,
+    Property3 = value3
+});
+
+MyType myVariable = new MyType
+{
+    Property1 = value1,
+    Property2 = value2,
+    Property3 = value3
+};]]></Before>
+        <After><![CDATA[MyType myVariable =
+    await MyMethodAsync(
+        new MyType()
+        {
+            Property1 = value1,
+            Property2 = value2,
+            Property3 = value3
+        }
+    );
+
+MyType myVariable =
+    new MyType
+    {
+        Property1 = value1,
+        Property2 = value2,
+        Property3 = value3
+    };]]></After>
+      </Sample>
+    </Samples>
+  </Analyzer>
+  <Analyzer>
     <Id>RCS9001</Id>
     <Identifier>UsePatternMatching</Identifier>
     <Title>Use pattern matching</Title>

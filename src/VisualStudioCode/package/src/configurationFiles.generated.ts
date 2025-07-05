@@ -120,6 +120,10 @@ roslynator_analyzers.enabled_by_default = true|false
 
 #roslynator_prefix_field_identifier_with_underscore = true|false
 
+#roslynator_structural_honesty_strictness = Strict|Tolerant
+# Default: Strict
+# Applicable to: rcs1271
+
 #roslynator_tab_length = <NUM>
 # Default: 4
 # Applicable to: rcs0056
@@ -934,6 +938,10 @@ roslynator_analyzers.enabled_by_default = true|false
 # Fix bracket formatting of a binary expression
 #dotnet_diagnostic.rcs1270.severity = none
 # Options: roslynator_target_braces_style
+
+# Fix structural honesty
+#dotnet_diagnostic.rcs1271.severity = none
+# Options: roslynator_structural_honesty_strictness
 
 # Use pattern matching
 #dotnet_diagnostic.rcs9001.severity = silent

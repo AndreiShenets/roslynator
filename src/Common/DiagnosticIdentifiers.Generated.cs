@@ -282,5 +282,6 @@ namespace Roslynator
         public const string SimplifyNumericComparison = "RCS1268";
         public const string FixBracketFormattingOfList = "RCS1269";
         public const string FixBracketFormattingOfBinaryExpression = "RCS1270";
+        public const string FixStructuralHonesty = "RCS1271";
     }
 }

@@ -3347,5 +3347,17 @@ namespace Roslynator
             helpLinkUri:        DiagnosticIdentifiers.FixBracketFormattingOfBinaryExpression, 
             customTags:         []);
 
+        /// <summary>RCS1271</summary>
+        public static readonly DiagnosticDescriptor FixStructuralHonesty = DiagnosticDescriptorFactory.Create(
+            id:                 DiagnosticIdentifiers.FixStructuralHonesty, 
+            title:              "Fix structural honesty", 
+            messageFormat:      "Fix structural honesty", 
+            category:           DiagnosticCategories.Roslynator, 
+            defaultSeverity:    DiagnosticSeverity.Info, 
+            isEnabledByDefault: false, 
+            description:        null, 
+            helpLinkUri:        DiagnosticIdentifiers.FixStructuralHonesty, 
+            customTags:         []);
+
     }
 }
