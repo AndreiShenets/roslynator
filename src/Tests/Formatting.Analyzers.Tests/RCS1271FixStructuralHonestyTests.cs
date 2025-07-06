@@ -22,9 +22,22 @@ public class RCS1271FixStructuralHonestyTests :
             {
                 return 10;
             }|])|];
-
+            int result2 = [|MyMethod([|() =>
+            {
+                return 10;
+            }|])|];
+            int result3 = [|MyMethod([|() =>
+            10|])|];
+            int result4 = [|MyMethod([|x =>
+            {
+                return 10;
+            }|])|];
+            
             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
                 => Task.FromResult(1);
+            
+            void MyMethod(Func<int> f) => 1;
+            void MyMethod2(Func<int, int> f) => 1;
             """,
             """
             int result = 
@@ -34,9 +47,31 @@ public class RCS1271FixStructuralHonestyTests :
                         return 10;
                     }
                 );
+            int result2 = 
+                MyMethod(
+                    () =>
+                    {
+                        return 10;
+                    }
+                );
+            int result3 = 
+                MyMethod(
+                    () =>
+                        10
+                );
+            int result4 = 
+                MyMethod(
+                    x =>
+                    {
+                        return 10;
+                    }
+                );
 
             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
                 => Task.FromResult(1);
+
+            void MyMethod(Func<int> f) => 1;
+            void MyMethod2(Func<int, int> f) => 1;
             """
         );
     }
