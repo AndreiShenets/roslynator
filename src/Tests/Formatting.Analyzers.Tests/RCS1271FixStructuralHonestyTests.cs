@@ -1229,6 +1229,26 @@ public class RCS1271FixStructuralHonestyTests :
     }
 
     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Fixes_Structural_Honesty_for_raw_string_utf8()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """"
+            var s = [|"""
+                abc
+                cde
+                """u8|];
+            """",
+            """"
+            var s = 
+                """
+                abc
+                cde
+                """u8;
+            """"
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
     public async Task Fixes_Structural_Honesty_for_raw_string_if_parameter()
     {
         await VerifyDiagnosticAndFixAsync(
@@ -1296,12 +1316,7 @@ public class RCS1271FixStructuralHonestyTests :
                         """,
                         expectedSource: null
                     )
-                },
-            options:
-                Options.SetConfigOption(
-                    ConfigOptionKeys.StructuralHonestyStrictness,
-                    ConfigOptionValues.StructuralHonestyStrictness_Tolerant
-                )
+                }
         );
     }
 

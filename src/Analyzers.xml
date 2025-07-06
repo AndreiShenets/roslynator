@@ -7899,9 +7899,6 @@ string s = """
     <Title>Fix structural honesty</Title>
     <DefaultSeverity>Info</DefaultSeverity>
     <IsEnabledByDefault>false</IsEnabledByDefault>
-    <ConfigOptions>
-      <Option Key="structural_honesty_strictness" />
-    </ConfigOptions>
     <Summary>
       This analyzer ensure that "head" and "body" of code expression or definition are placed together
     </Summary>
