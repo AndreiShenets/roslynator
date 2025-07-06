@@ -246,13 +246,6 @@
       <Value>both</Value>
     </Values>
   </Option>
-  <Option Id="StructuralHonestyStrictness">
-    <Description>Define strict should be the algorithm of structural honesty</Description>
-    <Values>
-      <Value IsDefault="true">Strict</Value>
-      <Value>Tolerant</Value>
-    </Values>
-  </Option>
   <!--
   <Option Id="">
     <Key></Key>

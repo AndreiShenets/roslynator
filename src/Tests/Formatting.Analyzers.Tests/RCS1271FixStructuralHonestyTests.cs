@@ -13,21 +13,18 @@ public class RCS1271FixStructuralHonestyTests :
 {
     public override DiagnosticDescriptor Descriptor { get; } = DiagnosticRules.FixStructuralHonesty;
 
-    public override CSharpTestOptions Options
-        => base.Options.AddConfigOption(
-            ConfigOptionKeys.StructuralHonestyStrictness,
-            ConfigOptionValues.StructuralHonestyStrictness_Strict
-        );
-
     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
     public async Task Fixes_Structural_Honesty_for_func_returning_variable_and_accepting_lambda()
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            int result = await MyMethodAsync(async (int a, int b, int c) =>
+            int result = [|await MyMethodAsync([|async (int a, int b, int c) =>
             {
                 return 10;
-            });
+            }|])|];
+
+            Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
+                => Task.FromResult(1);
             """,
             """
             int result = 
@@ -37,6 +34,9 @@ public class RCS1271FixStructuralHonestyTests :
                         return 10;
                     }
                 );
+
+            Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
+                => Task.FromResult(1);
             """
         );
     }
@@ -46,46 +46,74 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            int result = MyMethod(async (int a, int b, int c) =>
+            int result = [|MyMethod([|(int a, int b, int c) =>
             {
                 return 10;
-            });
+            }|])|];
+            int result2 = [|MyMethod([|(int a, int b, int c)=> 
+                10|])|];
+            int result3 = [|MyMethod([|(int a, int b, int c) 
+                => 10|])|];
+
+            int MyMethod(Func<int, int, int, int> f) => 1;
             """,
             """
             int result = 
                 MyMethod(
-                    async (int a, int b, int c) =>
+                    (int a, int b, int c) =>
                     {
                         return 10;
                     }
                 );
+            int result2 = 
+                MyMethod(
+                    (int a, int b, int c)=> 
+                        10
+                );
+            int result3 = 
+                MyMethod(
+                    (int a, int b, int c) 
+                        => 10
+                );
+
+            int MyMethod(Func<int, int, int, int> f) => 1;
             """
         );
     }
 
     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task Fixes_tolerantly_Structural_Honesty_for_func_returning_variable_and_accepting_lambda()
+    public async Task Fixes_Structural_Honesty_for_chained_method_and_accepting_lambda()
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            int result = await MyMethodAsync(async (int a, int b, int c) =>
+            [|await C.Instance.MyMethodAsync([|async (int a, int b, int c) =>
             {
-                return 10;
-            });
+                return;
+            }|])|];
             """,
             """
-            int result = await MyMethodAsync(
+            await C.Instance.MyMethodAsync(
                 async (int a, int b, int c) =>
                 {
                     return 10;
                 }
             );
             """,
-            options:
-                Options.SetConfigOption(
-                    ConfigOptionKeys.StructuralHonestyStrictness,
-                    ConfigOptionValues.StructuralHonestyStrictness_Tolerant
-                )
+            additionalFiles:
+                new (string source, string expectedSource)[]
+                {
+                    (
+                        source:
+                            """
+                            public class C {
+                                public static C Instance { get; } = new C();
+
+                                public static Task<bool> MyMethodAsync(Func<int, int, int, Task<int>> f) => Task.FromResult(true);
+                            }
+                            """,
+                        expectedSource: null
+                    )
+                }
         );
     }
 
@@ -94,15 +122,22 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            Action<int, int, int> myAction = (int a, int b, int c) =>
+            Action<int, int, int> myAction = [|(int a, int b, int c) =>
             {
                 // ...
-            };
+            }|];
+            Action<int, int, int> myAction2 = [|(int a, int b, int c) => {
+                // ...
+            }|];
             """,
             """
             Action<int, int, int> myAction = 
                 (int a, int b, int c) =>
                 {
+                    // ...
+                };
+            Action<int, int, int> myAction2 = 
+                (int a, int b, int c) => {
                     // ...
                 };
             """
@@ -110,27 +145,14 @@ public class RCS1271FixStructuralHonestyTests :
     }
 
     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task Fixes_tolerantly_Structural_Honesty_for_lambda_variable_declaration()
+    public async Task No_diagnostic_for_single_lined_lambda_variable_declaration()
     {
-        await VerifyDiagnosticAndFixAsync(
+        await VerifyNoDiagnosticAsync(
             """
-            Action<int, int, int> myAction = (int a, int b, int c) =>
-            {
-                // ...
-            };
-            """,
+            Action<int, int, int> myAction = (int a, int b, int c) => { /* ... */ };
+            Action<int, int, int> myAction2 = 
+                (int a, int b, int c) => { /* ... */ };
             """
-            Action<int, int, int> myAction = 
-                (int a, int b, int c) =>
-                {
-                    // ...
-                };
-            """,
-            options:
-                Options.SetConfigOption(
-                    ConfigOptionKeys.StructuralHonestyStrictness,
-                    ConfigOptionValues.StructuralHonestyStrictness_Tolerant
-                )
         );
     }
 
@@ -143,7 +165,10 @@ public class RCS1271FixStructuralHonestyTests :
             {
                 Property1 = 1,
                 Property2 = 2
-            }|]);|]
+            }|])|];
+
+            Task<int> MyMethodAsync(MyType mt)
+                => Task.FromResult(1);
             """,
             """
             int myVariable = 
@@ -154,6 +179,9 @@ public class RCS1271FixStructuralHonestyTests :
                         Property2 = 2
                     }
                 );
+
+            Task<int> MyMethodAsync(MyType mt)
+                => Task.FromResult(1);
             """,
             additionalFiles:
                 new (string source, string expectedSource)[]
@@ -179,13 +207,17 @@ public class RCS1271FixStructuralHonestyTests :
         await VerifyDiagnosticAndFixAsync(
             """
             int myVariable = [|await MyMethodAsync(
-                new MyType() { Property1 = 1, Property2 = 2 });|]
+                new MyType() { Property1 = 1, Property2 = 2 })|];
+
+            async Task<int> MyMethodAsync(MyType mt) => 1;
             """,
             """
             int myVariable = 
                 await MyMethodAsync(
                     new MyType() { Property1 = 1, Property2 = 2 }
                 );
+
+            async Task<int> MyMethodAsync(MyType mt) => 1;
             """,
             additionalFiles:
                 new (string source, string expectedSource)[]
@@ -209,104 +241,11 @@ public class RCS1271FixStructuralHonestyTests :
     public async Task No_Structural_Honesty_diagnostic_for_single_lined_func_that_accepting_single_lined_new_object()
     {
         await VerifyNoDiagnosticAsync(
-            "int myVariable = await MyMethodAsync(new MyType() { Property1 = 1, Property2 = 2 });",
-            additionalFiles:
-            [
-                """
-                public sealed class MyType
-                {
-                    public required int Property1 { get; init; }
-                    public required int Property2 { get; init; }
-                }
-                """
-            ]
-        );
-    }
+            """
+            int myVariable = await MyMethodAsync(new MyType() { Property1 = 1, Property2 = 2 });
 
-    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task Fixes_tolerantly_Structural_Honesty_for_func_returning_variable_and_accepting_new_object()
-    {
-        await VerifyDiagnosticAndFixAsync(
-            """
-            int myVariable = [|await MyMethodAsync([|new MyType()
-            {
-                Property1 = 1,
-                Property2 = 2
-            }|]);|]
+            async Task<int> MyMethodAsync(MyType mt) => 1;
             """,
-            """
-            int myVariable = await MyMethodAsync(
-                new MyType()
-                {
-                    Property1 = 1,
-                    Property2 = 2
-                }
-            );
-            """,
-            additionalFiles:
-                new (string source, string expectedSource)[]
-                {
-                    (
-                        source:
-                        """
-                        public sealed class MyType
-                        {
-                            public required int Property1 { get; init; }
-                            public required int Property2 { get; init; }
-                        }
-                        """,
-                        expectedSource: null
-                    )
-                },
-            options:
-                Options.SetConfigOption(
-                    ConfigOptionKeys.StructuralHonestyStrictness,
-                    ConfigOptionValues.StructuralHonestyStrictness_Tolerant
-                )
-        );
-    }
-
-    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task Fixes_tolerantly_Structural_Honesty_for_func_returning_variable_and_accepting_single_lined_new_object()
-    {
-        await VerifyDiagnosticAndFixAsync(
-            """
-            int myVariable = [|await MyMethodAsync(
-                new MyType() { Property1 = 1, Property2 = 2 });|]
-            """,
-            """
-            int myVariable = await MyMethodAsync(
-                new MyType() { Property1 = 1, Property2 = 2 }
-            );
-            """,
-            additionalFiles:
-                new (string source, string expectedSource)[]
-                {
-                    (
-                        source:
-                        """
-                        public sealed class MyType
-                        {
-                            public required int Property1 { get; init; }
-                            public required int Property2 { get; init; }
-                        }
-                        """,
-                        expectedSource: null
-                    )
-                },
-            options:
-                Options.SetConfigOption(
-                    ConfigOptionKeys.StructuralHonestyStrictness,
-                    ConfigOptionValues.StructuralHonestyStrictness_Tolerant
-                )
-        );
-    }
-
-    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task No_Structural_Honesty_diagnostic_in_tolerant_mode_for_single_lined_func_that_accepting_single_lined_new_object()
-    {
-        await VerifyNoDiagnosticAsync(
-            "int myVariable = await MyMethodAsync(new MyType() { Property1 = 1, Property2 = 2 });",
             additionalFiles:
                 [
                     """
@@ -316,12 +255,7 @@ public class RCS1271FixStructuralHonestyTests :
                         public required int Property2 { get; init; }
                     }
                     """
-                ],
-            options:
-                Options.SetConfigOption(
-                    ConfigOptionKeys.StructuralHonestyStrictness,
-                    ConfigOptionValues.StructuralHonestyStrictness_Tolerant
-                )
+                ]
         );
     }
 
@@ -330,16 +264,25 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            MyType myVariable = new MyType
+            MyType myVariable = [|new MyType
             {
                 Property1 = 1,
                 Property2 = 2,
-                Nested = new MyType
+                Nested = [|new MyType
                 {
                     Property1 = 3,
                     Property2 = 4
-                };
-            };
+                }|]
+            }|];
+            MyType myVariable2 = [|new MyType {
+                Property1 = 1,
+                Property2 = 2,
+                Nested = [|new MyType
+                {
+                    Property1 = 3,
+                    Property2 = 4
+                }|]
+            }|];
             """,
             """
             MyType myVariable = 
@@ -352,7 +295,18 @@ public class RCS1271FixStructuralHonestyTests :
                         {
                             Property1 = 3,
                             Property2 = 4
-                        };
+                        }
+                };
+            MyType myVariable2 = 
+                new MyType {
+                    Property1 = 1,
+                    Property2 = 2,
+                    Nested = 
+                        new MyType
+                        {
+                            Property1 = 3,
+                            Property2 = 4
+                        }
                 };
             """,
             additionalFiles:
@@ -375,18 +329,18 @@ public class RCS1271FixStructuralHonestyTests :
     }
 
     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task Fixes_Structural_Honesty_new_record_with_with()
+    public async Task Fixes_Structural_Honesty_for_new_record_with_with()
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            var person = new Person { Name = "John", Age = 30 } with
+            var person = [|new Person { Name = "John", Age = 30 } with
             {
                 Age = 31
-            };
-            var person2 = person with
+            }|];
+            var person2 = [|person with
             {
                 Age = 31
-            };
+            }|];
             """,
             """
             var person = 
@@ -402,16 +356,14 @@ public class RCS1271FixStructuralHonestyTests :
                 };
             """,
             additionalFiles:
-            new (string source, string expectedSource)[]
-            {
-                (
-                    source:
-                    """
-                    public sealed record Person(string Name, int Age);
-                    """,
-                    expectedSource: null
-                )
-            }
+                new (string source, string expectedSource)[]
+                {
+                    (
+                        source:
+                        "public sealed record Person(string Name, int Age);",
+                        expectedSource: null
+                    )
+                }
         );
     }
 
@@ -420,27 +372,38 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            var person = new Person((int v1, int v2) => {
+            var person = [|new Person([|(int v1, int v2) => 
+            {
                 return v1 + v2;
-            });
-            var person2 = new Person((int v1, int v2) =>
-                v1 + v2
-            );
-            var person3 = new Person((int v1, int v2) => v1 + v2);
+            }|])|];
+            var person2 = [|new Person([|(int v1, int v2) => {
+                return v1 + v2;
+            }|])|];
+            var person3 = [|new Person([|(int v1, int v2) =>
+                v1 + v2|]
+            )|];
+            var person4 = new Person((int v1, int v2) => v1 + v2);
             """,
             """
             var person = 
                 new Person(
-                    (int v1, int v2) => {
+                    (int v1, int v2) => 
+                    {
                         return v1 + v2;
                     }
                 );
             var person2 = 
                 new Person(
+                    (int v1, int v2) => {
+                        return v1 + v2;
+                    }
+                );
+            var person3 = 
+                new Person(
                     (int v1, int v2) =>
                         v1 + v2
                 );
-            var person3 = new Person((int v1, int v2) => v1 + v2);
+            var person4 = new Person((int v1, int v2) => v1 + v2);
             """,
             additionalFiles:
                 new (string source, string expectedSource)[]
@@ -458,12 +421,12 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            MyType myVariable = new MyType
+            MyType myVariable = [|new MyType
             {
                 Property1 = 1,
                 Property2 = 2,
                 Nested = new MyType { Property1 = 3, Property2 = 4 };
-            };
+            }|];
             """,
             """
             MyType myVariable = 
@@ -512,146 +475,22 @@ public class RCS1271FixStructuralHonestyTests :
     }
 
     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task Fixes_tolerantly_Structural_Honesty_for_new_object()
-    {
-        await VerifyDiagnosticAndFixAsync(
-            """
-            MyType myVariable = new MyType
-            {
-                Property1 = 1,
-                Property2 = 2,
-                Nested = new MyType
-                {
-                    Property1 = 3,
-                    Property2 = 4
-                };
-            };
-            """,
-            """
-            MyType myVariable = 
-                new MyType
-                {
-                    Property1 = 1,
-                    Property2 = 2,
-                    Nested = 
-                        new MyType
-                        {
-                            Property1 = 3,
-                            Property2 = 4
-                        };
-                };
-            """,
-            additionalFiles:
-                new (string source, string expectedSource)[]
-                {
-                    (
-                        source:
-                        """
-                        public sealed class MyType
-                        {
-                            public required int Property1 { get; init; }
-                            public required int Property2 { get; init; }
-                            public required MyType Nested { get; init; }
-                        }
-                        """,
-                        expectedSource: null
-                    )
-                },
-            options:
-                Options.SetConfigOption(
-                    ConfigOptionKeys.StructuralHonestyStrictness,
-                    ConfigOptionValues.StructuralHonestyStrictness_Tolerant
-                )
-        );
-    }
-
-    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task Fixes_tolerantly_Structural_Honesty_for_new_object_with_nested_single_lined_new_object()
-    {
-        await VerifyDiagnosticAndFixAsync(
-            """
-            MyType myVariable = new MyType
-            {
-                Property1 = 1,
-                Property2 = 2,
-                Nested = new MyType { Property1 = 3, Property2 = 4 };
-            };
-            """,
-            """
-            MyType myVariable = 
-                new MyType
-                {
-                    Property1 = 1,
-                    Property2 = 2,
-                    Nested = new MyType { Property1 = 3, Property2 = 4 };
-                };
-            """,
-            additionalFiles:
-                new (string source, string expectedSource)[]
-                {
-                    (
-                        source:
-                        """
-                        public sealed class MyType
-                        {
-                            public required int Property1 { get; init; }
-                            public required int Property2 { get; init; }
-                            public required MyType Nested { get; init; }
-                        }
-                        """,
-                        expectedSource: null
-                    )
-                },
-            options:
-                Options.SetConfigOption(
-                    ConfigOptionKeys.StructuralHonestyStrictness,
-                    ConfigOptionValues.StructuralHonestyStrictness_Tolerant
-                )
-        );
-    }
-
-    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
     public async Task Fixes_Structural_Honesty_for_delegate()
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            Func<int, int> square = delegate(int x)
+            Func<int, int> square = [|delegate(int x)
             {
                 return x * x;
-            }
+            }|];
             """,
             """
             Func<int, int> square = 
                 delegate(int x)
                 {
                     return x * x;
-                }
+                };
             """
-        );
-    }
-
-    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task Fixes_tolerantly_Structural_Honesty_for_delegate()
-    {
-        await VerifyDiagnosticAndFixAsync(
-            """
-            Func<int, int> square = delegate(int x)
-            {
-                return x * x;
-            }
-            """,
-            """
-            Func<int, int> square = 
-                delegate(int x)
-                {
-                    return x * x;
-                }
-            """,
-            options:
-                Options.SetConfigOption(
-                    ConfigOptionKeys.StructuralHonestyStrictness,
-                    ConfigOptionValues.StructuralHonestyStrictness_Tolerant
-                )
         );
     }
 
@@ -660,13 +499,13 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            var query = from item in collection
+            var query = [|from item in collection
                 where item.IsValid
-                select new
+                select [|new
                 {
                     Name = item.Name,
                     Value = item.Value
-                };
+                }|]|];
             """,
             """
             var query = 
@@ -687,23 +526,24 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            var query = from item in collection
+            var query = [|from item in collection
                         where item.IsValid
-                        select new
+                        select [|new
                         {
                             Name = item.Name,
                             Value = item.Value
-                        };
+                        }|]|];
             """,
             """
             var query = 
                 from item in collection
                 where item.IsValid
-                select new
-                {
-                    Name = item.Name,
-                    Value = item.Value
-                };
+                select 
+                    new
+                    {
+                        Name = item.Name,
+                        Value = item.Value
+                    };
             """
         );
     }
@@ -713,11 +553,11 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            var person = new
+            var person = [|new
             {
                 Name = "John",
                 Age = 30
-            };
+            }|];
             """,
             """
             var person = 
@@ -735,10 +575,10 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            var list = new List<int>
+            var list = [|new List<int>
             {
                 1, 2, 3, 4, 5
-            };
+            }|];
             """,
             """
             var list = 
@@ -755,16 +595,16 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            var list = new[]
+            var list = [|new[]
             {
                 1, 2, 3, 4, 5
-            };
-            var jaggedArray = new int[][]
+            }|];
+            var jaggedArray = [|new int[][]
             {
                 new int[] { 1, 2 },
                 new int[] { 3, 4, 5 },
                 new int[] { 6 }
-            };
+            }|];
             """,
             """
             var list = 
@@ -788,18 +628,18 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            List<int> list = new ()
+            List<int> list = [|new ()
             {
                 1, 2, 3, 4, 5
-            };
-            List<int> list2 = new()
+            }|];
+            List<int> list2 = [|new()
             {
                 1, 2, 3, 4, 5
-            };
-            list2 = new()
+            }|];
+            list2 = [|new()
             {
                 1, 2, 3, 4, 5
-            };
+            }|];
             """,
             """
             List<int> list = 
@@ -834,13 +674,13 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            List<int> list = [
+            List<int> list = [|[
                 1, 2, 3, 4, 5
-            ];
+            ]|];
             List<int> list2 = 
-            [
+            [|[
                 1, 2, 3, 4, 5
-            ];
+            ]|];
             """,
             """
             List<int> list = 
@@ -848,26 +688,6 @@ public class RCS1271FixStructuralHonestyTests :
                     1, 2, 3, 4, 5
                 ];
             List<int> list2 = 
-                [
-                    1, 2, 3, 4, 5
-                ];
-            """
-        );
-    }
-
-    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task No_diagnostic_when_tolerant_for_collection_expression()
-    {
-        await VerifyNoDiagnosticAsync(
-            """
-            List<int> list = [
-                1, 2, 3, 4, 5
-            ];
-            List<int> list2 = 
-            [
-                1, 2, 3, 4, 5
-            ];
-            List<int> list3 = 
                 [
                     1, 2, 3, 4, 5
                 ];
@@ -889,12 +709,12 @@ public class RCS1271FixStructuralHonestyTests :
         await VerifyDiagnosticAndFixAsync(
             """
             int x = 1;
-            var result = x switch
+            var result = [|x switch
             {
                 1 => "One",
                 2 => "Two",
                 _ => "Other"
-            };
+            }|];
             """,
             """
             int x = 1;
@@ -916,12 +736,12 @@ public class RCS1271FixStructuralHonestyTests :
             """
                 int x = 1;
                 var result = 
-            x switch
+            [|x switch
                         {
                             1 => "One",
                             2 => "Two",
                             _ => "Other"
-                        };
+                        }|];
             """,
             """
                 int x = 1;
@@ -941,24 +761,24 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            var person = (
+            var person = [|(
                 Name: "John", 
                 Age: 30
-            );
-            var person2 = (
+            )|];
+            var person2 = [|(
                 Name: "John", 
                 Age: 30,
-                Sister: new {
+                Sister: [|new {
                     Name = "Jane",
-                }
-            );
-            var person3 = (
+                }|]
+            )|];
+            var person3 = [|(
                 Name: "John", 
                 Age: 30,
-                Sister: (
+                Sister: [|(
                     Name: "Jane",
-                    Age: 20)
-            );
+                    Age: 20)|]
+            )|];
             """,
             """
             var person = 
@@ -1005,11 +825,11 @@ public class RCS1271FixStructuralHonestyTests :
         await VerifyDiagnosticAndFixAsync(
             """
             object obj = "abc";
-            var result = obj is string s
+            var result = [|obj is string s
                 ? s.Length
                 : obj is int i
                     ? i
-                    : 0;
+                    : 0|];
             """,
             """
             object obj = "abc";
@@ -1029,8 +849,8 @@ public class RCS1271FixStructuralHonestyTests :
         await VerifyDiagnosticAndFixAsync(
             """
             object obj = "abc";
-            var result = obj is string s
-                && ((string)obj).Length = 10;
+            var result = [|obj is string s
+                && ((string)obj).Length = 10|];
             """,
             """
             object obj = "abc";
@@ -1046,11 +866,11 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            ProcessPerson(new
+            [|ProcessPerson([|new
             {
                 Name = "John",
                 Age = 30
-            });
+            }|])|];
             """,
             """
             ProcessPerson(
@@ -1072,8 +892,8 @@ public class RCS1271FixStructuralHonestyTests :
             int? x = 1;
             var message = $@"User details:
             {
-                Enumerable.Range(1, 10).Select(i => 
-                    x.HasValue ? $"Value: {x.value + i}" : "No value")
+                [|Enumerable.Range(1, 10).Select([|i => 
+                    x.HasValue ? $"Value: {x.value + i}" : "No value"|])|]
             }";
             """,
             """
@@ -1113,10 +933,16 @@ public class RCS1271FixStructuralHonestyTests :
             """
             public class C {
                 public bool Options 
-                    => /*what if comment is here? */ CheckOptionsCalculatedFor(
+                    => [|CheckOptionsCalculatedFor(
                         "Option1",
                             "Option2" // broken formatting is expected, no changes should be provided
-                    )
+                    )|]
+
+                public bool OptionsWithComment 
+                    => /*what if comment is here? */ [|CheckOptionsCalculatedFor(
+                        "Option1",
+                            "Option2" // broken formatting is expected, no changes should be provided
+                    )|]
 
                 public static bool CheckOptionsCalculatedFor(string option1, string option2) => true;
             }
@@ -1124,6 +950,13 @@ public class RCS1271FixStructuralHonestyTests :
             """
             public class C {
                 public bool Options 
+                    => 
+                        CheckOptionsCalculatedFor(
+                            "Option1",
+                                "Option2" // broken formatting is expected, no changes should be provided
+                        )
+
+                public bool OptionsWithComment 
                     => /*what if comment is here? */ 
                         CheckOptionsCalculatedFor(
                             "Option1",
@@ -1143,10 +976,10 @@ public class RCS1271FixStructuralHonestyTests :
             """
             C.CheckOptionsCalculatedFor(
                 string.Empty,
-                option2: new {
+                option2: [|new {
                     i = 1,
                     b = 2
-                }
+                }|]
             )
             """,
             """
@@ -1180,17 +1013,17 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            int x = Enumerable.Range(1, 10)
+            int x = [|Enumerable.Range(1, 10)
                 .Select(i => i)
                 .Where(i => i > 5)
-                .Select(i => i).Count();
+                .Select(i => i).Count()|];
             """,
             """
             int x = 
                 Enumerable.Range(1, 10)
-                    .Select(i => i)
-                    .Where(i => i > 5)
-                    .Select(i => i).Count();
+                .Select(i => i)
+                .Where(i => i > 5)
+                .Select(i => i).Count();
             """
         );
     }
@@ -1200,10 +1033,10 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            C.Check(Enumerable.Range(1, 10)
+            [|C.Check([|Enumerable.Range(1, 10)
                     .Select(i => i)
                     .Where(i => i > 5)
-                    .Select(i => i).Count());
+                    .Select(i => i).Count()|])|];
             """,
             """
             C.Check(
@@ -1237,8 +1070,8 @@ public class RCS1271FixStructuralHonestyTests :
             int x =
                 Enumerable.Range(1, 10)
                     .Select(i => i)
-                    .Where(i => { 
-                        return i > 5; }
+                    .Where([|i => { 
+                        return i > 5; }|]
                     )
                     .Select(i => i).Count());
             """,
@@ -1266,10 +1099,19 @@ public class RCS1271FixStructuralHonestyTests :
                 Enumerable.Range(1, 10)
                     .Select(i => i)
                     .Where(i => i > 5
-                    .Select(i => new {
+                    .Select([|i => [|new {
                         i = i,
                         b = i + 1
-                    })
+                    }|]|])
+                    .Count();
+            var y =
+                Enumerable.Range(1, 10)
+                    .Select(i => i)
+                    .Where(i => i > 5
+                    .Select([|i => { return [|new {
+                        i = i,
+                        b = i + 1
+                    };|]}|])
                     .Count();
             """,
             """
@@ -1285,6 +1127,21 @@ public class RCS1271FixStructuralHonestyTests :
                             }
                     )
                     .Count();
+            var y =
+            Enumerable.Range(1, 10)
+                .Select(i => i)
+                .Where(i => i > 5
+                .Select(
+                    i => { 
+                        return 
+                            new 
+                            {
+                                i = i,
+                                b = i + 1
+                            };
+                    }
+                 )
+                .Count();
             """
         );
     }
@@ -1297,26 +1154,26 @@ public class RCS1271FixStructuralHonestyTests :
             Func<object> f = 
                 () => 
                 {
-                    return Enumerable.Range(1, 10)
+                    return [|Enumerable.Range(1, 10)
                         .Select(i => i)
                         .Where(i => i > 5)
-                        .Select(i => i).Count();
+                        .Select(i => i).Count()|];
                 };
             Func<object> f2 = 
                 () => 
                 {
-                    return new {
+                    return [|new {
                         i = 1,
                         b = 2
-                    };
+                    }|];
                 };
             Func<object> f3 = 
                 () => 
                 {
-                    return (int i, int b) => 
+                    return [|(int i, int b) => 
                     {
                         return i + b;
-                    };
+                    }|];
                 };
             """,
             """
@@ -1352,52 +1209,14 @@ public class RCS1271FixStructuralHonestyTests :
     }
 
     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task No_diagnostic_when_return_in_front_of_and_tolerant_mode()
-    {
-        await VerifyNoDiagnosticAsync(
-            """
-            Func<object> f = 
-                () => 
-                {
-                    return Enumerable.Range(1, 10)
-                        .Select(i => i)
-                        .Where(i => i > 5)
-                        .Select(i => i).Count();
-                };
-            Func<object> f2 = 
-                () => 
-                {
-                    return new {
-                        i = 1,
-                        b = 2
-                    };
-                };
-            Func<object> f3 = 
-                () => 
-                {
-                    return (int i, int b) => 
-                    {
-                        return i + b;
-                    };
-                };
-            """,
-            options:
-                Options.SetConfigOption(
-                    ConfigOptionKeys.StructuralHonestyStrictness,
-                    ConfigOptionValues.StructuralHonestyStrictness_Tolerant
-                )
-        );
-    }
-
-    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
     public async Task Fixes_Structural_Honesty_for_raw_string()
     {
         await VerifyDiagnosticAndFixAsync(
             """"
-            string s = """
+            string s = [|"""
                 abc
                 cde
-                """;
+                """|];
             """",
             """"
             string s = 
@@ -1414,10 +1233,10 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """"
-            C.Check("""
+            [|C.Check([|"""
                 abc
                 cde
-                """);
+                """|])|];
             """",
             """"
             C.Check(
@@ -1448,12 +1267,12 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """"
-            C.Check(
+            [|C.Check(
                 s: "tst",
-                options: """
+                options: [|"""
                 abc
                 cde
-                """);
+                """|])|];
             """",
             """"
             C.Check(
@@ -1487,105 +1306,6 @@ public class RCS1271FixStructuralHonestyTests :
     }
 
     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task Fixes_Structural_Honesty_for_raw_string_if_parameter_and_tolerant()
-    {
-        await VerifyDiagnosticAndFixAsync(
-            """"
-            C.Check("""
-                abc
-                cde
-                """);
-            """",
-            """"
-            C.Check(
-                """
-                abc
-                cde
-                """
-            );
-            """",
-            additionalFiles:
-                new (string source, string expectedSource)[]
-                {
-                    (
-                        source:
-                        """
-                        public static class C {
-                            public static bool Check(string s) => true;
-                        }
-                        """,
-                        expectedSource: null
-                    )
-                },
-            options:
-                Options.SetConfigOption(
-                    ConfigOptionKeys.StructuralHonestyStrictness,
-                    ConfigOptionValues.StructuralHonestyStrictness_Tolerant
-                )
-        );
-    }
-
-    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task Fixes_Structural_Honesty_for_raw_string_if_named_parameter_and_tolerant()
-    {
-        await VerifyDiagnosticAndFixAsync(
-            """"
-            C.Check(
-                s: "tst",
-                options: """
-                abc
-                cde
-                """);
-            """",
-            """"
-            C.Check(
-                s: "tst",
-                options: """
-                    abc
-                    cde
-                    """
-            );
-            """",
-            additionalFiles:
-                new (string source, string expectedSource)[]
-                {
-                    (
-                        source:
-                        """
-                        public static class C {
-                            public static bool Check(string s, string options) => true;
-                        }
-                        """,
-                        expectedSource: null
-                    )
-                },
-            options:
-                Options.SetConfigOption(
-                    ConfigOptionKeys.StructuralHonestyStrictness,
-                    ConfigOptionValues.StructuralHonestyStrictness_Tolerant
-                )
-        );
-    }
-
-    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task No_diagnostic_raw_string_if_tolerant()
-    {
-        await VerifyNoDiagnosticAsync(
-            """"
-            string s = """
-                abc
-                cde
-                """;
-            """",
-            options:
-                Options.SetConfigOption(
-                    ConfigOptionKeys.StructuralHonestyStrictness,
-                    ConfigOptionValues.StructuralHonestyStrictness_Tolerant
-                )
-        );
-    }
-
-    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
     public async Task Fixes_Structural_Honesty_for_raw_strings_and_named_parameter()
     {
         await VerifyDiagnosticAndFixAsync(
@@ -1593,7 +1313,7 @@ public class RCS1271FixStructuralHonestyTests :
             public class Tst {
                 public async Task Test()
                 {
-                    await C.Check("""
+                    [|await C.Check([|"""
             class C
             {
                 void M()
@@ -1601,7 +1321,7 @@ public class RCS1271FixStructuralHonestyTests :
                     var x = [|new[]|] { "" };
                 }
             }
-            """, """
+            """|], [|"""
             class C
             {
                 void M()
@@ -1609,8 +1329,7 @@ public class RCS1271FixStructuralHonestyTests :
                     var x = new string[] { "" };
                 }
             }
-            """, options: "tst"
-                    );
+            """|], options: "tst")|];
                 }
             }
             """",
@@ -1619,47 +1338,74 @@ public class RCS1271FixStructuralHonestyTests :
                 public async Task Test()
                 {
                     await C.Check(
-            """
-            class C
-            {
-                void M()
-                {
-                    var x = [|new[]|] { "" };
-                }
-            }
-            """, 
-            """
-            class C
-            {
-                void M()
-                {
-                    var x = new string[] { "" };
-                }
-            }
-            """, options: "tst"
+                        """
+                        class C
+                        {
+                            void M()
+                            {
+                                var x = [|new[]|] { "" };
+                            }
+                        }
+                        """, 
+                        """
+                        class C
+                        {
+                            void M()
+                            {
+                                var x = new string[] { "" };
+                            }
+                        }
+                        """, options: "tst"
                     );
                 }
             }
             );
             """",
             additionalFiles:
-            new (string source, string expectedSource)[]
-            {
-                (
-                    source:
-                    """
-                    public static class C {
-                        public static bool Check(string s, string t, string options) => true;
-                    }
-                    """,
-                    expectedSource: null
-                )
-            },
-            options:
-            Options.SetConfigOption(
-                ConfigOptionKeys.StructuralHonestyStrictness,
-                ConfigOptionValues.StructuralHonestyStrictness_Tolerant
-            )
+                new (string source, string expectedSource)[]
+                {
+                    (
+                        source:
+                        """
+                        public static class C {
+                            public static bool Check(string s, string t, string options) => true;
+                        }
+                        """,
+                        expectedSource: null
+                    )
+                }
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Fixes_Structural_Honesty_for_collection_expression_as_parameter()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            int myVariable = 
+                await MyMethodAsync(
+                    10, [|[
+                        1,
+                        2,
+                        3
+                    ]|]
+                );
+
+            async Task<int> MyMethodAsync(int i, int[] arr) => 1;
+            """,
+            """
+            int myVariable = 
+                await MyMethodAsync(
+                    10, 
+                    [
+                        1,
+                        2,
+                        3
+                    ]
+                );
+
+            async Task<int> MyMethodAsync(int i, int[] arr) => 1;
+            """
         );
     }
 }
