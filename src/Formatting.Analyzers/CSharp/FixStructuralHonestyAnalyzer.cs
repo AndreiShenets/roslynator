@@ -38,32 +38,70 @@ public sealed class FixStructuralHonestyAnalyzer : BaseDiagnosticAnalyzer
     {
         base.Initialize(context);
 
-        context.RegisterSyntaxNodeAction(
-            f => AnalyzeBinaryExpression(f),
-            SyntaxKind.AddExpression,
-            SyntaxKind.SubtractExpression,
-            SyntaxKind.MultiplyExpression,
-            SyntaxKind.DivideExpression,
-            SyntaxKind.ModuloExpression,
-            SyntaxKind.LeftShiftExpression,
-            SyntaxKind.RightShiftExpression,
-            SyntaxKind.LogicalOrExpression,
-            SyntaxKind.LogicalAndExpression,
-            SyntaxKind.BitwiseOrExpression,
-            SyntaxKind.BitwiseAndExpression,
-            SyntaxKind.ExclusiveOrExpression,
-            SyntaxKind.EqualsExpression,
-            SyntaxKind.NotEqualsExpression,
-            SyntaxKind.LessThanExpression,
-            SyntaxKind.LessThanOrEqualExpression,
-            SyntaxKind.GreaterThanExpression,
-            SyntaxKind.GreaterThanOrEqualExpression,
-            SyntaxKind.IsExpression,
-            SyntaxKind.AsExpression
+        context.RegisterSyntaxNodeAction(f => AnalyzeSimpleLambdaExpression(f), SyntaxKind.SimpleLambdaExpression);
+        context.RegisterSyntaxNodeAction(f => AnalyzeParenthesizedLambdaExpression(f), SyntaxKind.ParenthesizedLambdaExpression);
+
+        // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.NewKeyword);
+        // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.AnonymousMethodExpression);
+        // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.AnonymousObjectCreationExpression);
+        // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.ArrayCreationExpression);
+        // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.ArrayInitializerExpression);
+        // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.ArrowExpressionClause);
+        // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.FromClause);
+        // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.SelectClause);
+        // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.SingleLineRawStringLiteralToken);
+        // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.MultiLineRawStringLiteralToken);
+        // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.Utf8StringLiteralExpression);
+        //context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.InterpolatedVerbatimStringStartToken);
+        //context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.InterpolatedStringText);
+        // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.NameColon);
+        // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.ObjectCreationExpression);
+        // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.ObjectInitializerExpression);
+        // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.QueryExpression);
+        // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.SwitchExpression);
+        // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.WithKeyword);
+        // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.WithInitializerExpression);
+        // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.WithInitializerExpression);
+
+        // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.ArgumentList);
+        // // context.RegisterSyntaxNodeAction(f => AnalyzeBracketedArgumentList(f), SyntaxKind.BracketedArgumentList);
+
+        // context.RegisterSyntaxNodeAction(f => AnalyzeTupleType(f), SyntaxKind.TupleType);
+        // context.RegisterSyntaxNodeAction(f => AnalyzeTupleExpression(f), SyntaxKind.TupleElement);
+        // context.RegisterSyntaxNodeAction(f => AnalyzeTupleExpression(f), SyntaxKind.TupleExpression);
+#if ROSLYN_4_7
+        // context.RegisterSyntaxNodeAction(f => AnalyzeCollectionExpression(f), SyntaxKind.CollectionExpression);
+#endif
+    }
+
+    private void AnalyzeSimpleLambdaExpression(SyntaxNodeAnalysisContext context)
+    {
+        CancellationToken cancellationToken = context.CancellationToken;
+        SimpleLambdaExpressionSyntax lambda = (SimpleLambdaExpressionSyntax)context.Node;
+
+        if (lambda.IsSingleLine(cancellationToken: cancellationToken))
+        {
+            return;
+        }
+
+        TextSpan span = lambda.GetSpan();
+
+        DiagnosticHelpers.ReportDiagnostic(
+            context,
+            DiagnosticRules.FixStructuralHonesty,
+            Location.Create(
+                lambda.SyntaxTree,
+                span
+            )
         );
     }
 
-    private static void AnalyzeBinaryExpression(SyntaxNodeAnalysisContext context)
+    private void AnalyzeParenthesizedLambdaExpression(SyntaxNodeAnalysisContext context)
+    {
+        ParenthesizedLambdaExpressionSyntax lambda = (ParenthesizedLambdaExpressionSyntax)context.Node;
+    }
+
+    private static void AnalyzeStructuralHonesty(SyntaxNodeAnalysisContext context)
     {
         TargetBracesStyle bracesStyle = context.GetTargetBracesStyle();
 

@@ -18,9 +18,12 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
+            using System;
+            using System.Threading.Tasks;
+
             int result = [|await MyMethodAsync([|async (int a, int b, int c) =>
             {
-                return 10;
+                return await Task.Run(() => 10);
             }|])|];
             int result2 = [|MyMethod([|() =>
             {
@@ -28,7 +31,7 @@ public class RCS1271FixStructuralHonestyTests :
             }|])|];
             int result3 = [|MyMethod([|() =>
             10|])|];
-            int result4 = [|MyMethod([|x =>
+            int result4 = [|MyMethod2([|x =>
             {
                 return 10;
             }|])|];
@@ -36,15 +39,18 @@ public class RCS1271FixStructuralHonestyTests :
             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
                 => Task.FromResult(1);
             
-            void MyMethod(Func<int> f) => 1;
-            void MyMethod2(Func<int, int> f) => 1;
+            int MyMethod(Func<int> f) => 1;
+            int MyMethod2(Func<int, int> f) => 1;
             """,
             """
+            using System;
+            using System.Threading.Tasks;
+
             int result = 
                 await MyMethodAsync(
                     async (int a, int b, int c) =>
                     {
-                        return 10;
+                        return await Task.Run(() => 10);
                     }
                 );
             int result2 = 
@@ -60,7 +66,7 @@ public class RCS1271FixStructuralHonestyTests :
                         10
                 );
             int result4 = 
-                MyMethod(
+                MyMethod2(
                     x =>
                     {
                         return 10;
@@ -70,9 +76,10 @@ public class RCS1271FixStructuralHonestyTests :
             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
                 => Task.FromResult(1);
 
-            void MyMethod(Func<int> f) => 1;
-            void MyMethod2(Func<int, int> f) => 1;
-            """
+            int MyMethod(Func<int> f) => 1;
+            int MyMethod2(Func<int, int> f) => 1;
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
