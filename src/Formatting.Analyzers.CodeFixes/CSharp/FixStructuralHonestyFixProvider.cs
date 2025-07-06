@@ -22,7 +22,7 @@ namespace Roslynator.Formatting.CodeFixes.CSharp;
 [Shared]
 public sealed class FixStructuralHonestyFixProvider : BaseCodeFixProvider
 {
-    private const string Title = "Fix bracket formatting";
+    private const string Title = "Fix structural honesty";
 
     public override ImmutableArray<string> FixableDiagnosticIds
         => ImmutableArray.Create(DiagnosticIdentifiers.FixStructuralHonesty);
