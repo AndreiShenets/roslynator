@@ -186,11 +186,11 @@ public sealed class FixStructuralHonestyFixProvider : BaseCodeFixProvider
             }
 
             IndentationFixingWalker fixingWalker =
-                IndentationFixingWalker.Create(
+                new(
                     argumentList,
                     childrenIncreasedIndentation,
                     indentationAnalysis.GetSingleIndentation(),
-                    cancellationToken
+                    textLines
                 );
 
             fixingWalker.Visit(argumentList);

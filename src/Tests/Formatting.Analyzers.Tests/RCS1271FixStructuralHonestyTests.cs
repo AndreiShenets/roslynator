@@ -67,6 +67,8 @@ public class RCS1271FixStructuralHonestyTests :
             // Multiline
             // Enough for shrink indent
             // Not enough for shrink indent
+            // Comment above property assignment 
+            // Comment above statement in lambda
             """,
             """
             using System;

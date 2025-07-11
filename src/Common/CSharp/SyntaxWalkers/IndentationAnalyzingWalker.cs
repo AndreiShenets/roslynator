@@ -1,21 +1,16 @@
-﻿#nullable enable
-
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
-using Roslynator.CSharp;
 
-namespace Roslynator.Formatting.CodeFixes.CSharp;
+namespace Roslynator.CSharp.SyntaxWalkers;
 
 /// <summary>
 /// Bypass the whole child nodes, if a child node has leading trivia that starts at the beginning of a line,
-/// then the front trivial is sized to the passed indentation size.
-/// Edge case: The trivia in front contains a comment that is longer than the expected indentation,
-/// in this case nothing should happen, it is a problem of a user to fix that case
+/// then the walker checks if it has expected indentation.
 /// </summary>
-public sealed class IndentationFixingWalker : CSharpSyntaxWalker
+public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
 {
     private readonly SyntaxNode _parent;
 
@@ -25,9 +20,9 @@ public sealed class IndentationFixingWalker : CSharpSyntaxWalker
 
     private readonly Dictionary<SyntaxNode, string> _indentationCache = new();
 
-    public List<TextChange> TextChanges { get; } = [];
+    public bool Valid { get; private set; } = true;
 
-    public IndentationFixingWalker(
+    public IndentationAnalyzingWalker(
         SyntaxNode parent,
         string expectedIndentation,
         string singleIndentation,
@@ -49,6 +44,7 @@ public sealed class IndentationFixingWalker : CSharpSyntaxWalker
 
         if (ReferenceEquals(node, _parent))
         {
+
             base.Visit(node);
             return;
         }
