@@ -42,7 +42,7 @@ public abstract class AbstractCodeFixProvider : CodeFixProvider
         Func<TNode, bool> predicate = null,
         bool ascendOutOfTrivia = true) where TNode : SyntaxNode
     {
-        node = root
+        node = root?
             .FindNode(span, findInsideTrivia: findInsideTrivia, getInnermostNodeForTie: getInnermostNodeForTie)?
             .FirstAncestorOrSelf(predicate, ascendOutOfTrivia: ascendOutOfTrivia);
 
@@ -60,7 +60,7 @@ public abstract class AbstractCodeFixProvider : CodeFixProvider
         Func<SyntaxNode, bool> descendIntoChildren = null,
         bool descendIntoTrivia = true) where TNode : SyntaxNode
     {
-        node = root
+        node = root?
             .FindNode(span, findInsideTrivia: findInsideTrivia, getInnermostNodeForTie: getInnermostNodeForTie)?
             .FirstDescendantOrSelf<TNode>(span, descendIntoChildren: descendIntoChildren, descendIntoTrivia: descendIntoTrivia);
 

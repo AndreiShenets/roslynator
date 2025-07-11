@@ -14,6 +14,83 @@ public class RCS1271FixStructuralHonestyTests :
     public override DiagnosticDescriptor Descriptor { get; } = DiagnosticRules.FixStructuralHonesty;
 
     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Test()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            int result = [|await MyMethodAsync([|async (int a, int b, int c) =>
+            {
+                return await Task.Run(() => 10);
+            }|])|];
+
+            Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
+                => Task.FromResult(1);
+
+            int MyMethod(Func<int> f) => 1;
+            int MyMethod2(Func<int, int> f) => 1;
+            """,
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            int result =
+                await MyMethodAsync(
+                    async (int a, int b, int c) =>
+                    {
+                        return await Task.Run(() => 10);
+                    }
+                );
+
+            Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
+                => Task.FromResult(1);
+
+            int MyMethod(Func<int> f) => 1;
+            int MyMethod2(Func<int, int> f) => 1;
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Fixes_Structural_Honesty_in_case_of_comments()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            // Cases with comments
+            // One line
+            // Multiline
+            // Enough for shrink indent
+            // Not enough for shrink indent
+            """,
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            int result = 
+                await MyMethodAsync(
+                    async (int a, int b, int c) =>
+                    {
+                        return await Task.Run(() => 10);
+                    }
+                );
+
+            Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
+                => Task.FromResult(1);
+
+            int MyMethod(Func<int> f) => 1;
+            int MyMethod2(Func<int, int> f) => 1;
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
     public async Task Fixes_Structural_Honesty_for_func_returning_variable_and_accepting_lambda()
     {
         await VerifyDiagnosticAndFixAsync(
@@ -35,10 +112,10 @@ public class RCS1271FixStructuralHonestyTests :
             {
                 return 10;
             }|])|];
-            
+
             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
                 => Task.FromResult(1);
-            
+
             int MyMethod(Func<int> f) => 1;
             int MyMethod2(Func<int, int> f) => 1;
             """,
@@ -78,6 +155,78 @@ public class RCS1271FixStructuralHonestyTests :
 
             int MyMethod(Func<int> f) => 1;
             int MyMethod2(Func<int, int> f) => 1;
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Fixes_Structural_Honesty_for_misaligned_method()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            int result = 
+                [|await MyMethodAsync(
+                    1,
+                    2
+                    )|];
+            int result2 = 
+                [|await MyMethodAsync(
+                    1, 2
+            )|];
+            int result3 = 
+            [|await MyMethodAsync(
+                    1, 2)|];
+            int result4 = 
+            [|MyMethod(
+                    1, 2
+            )|];
+            int result5 = 
+            [|MyMethod(
+                    1, 2
+                    )|];
+            int result6 = 
+                [|MyMethod(
+                    1, 2)|];
+
+            Task<int> MyMethodAsync(int a, int b) => Task.FromResult(1);
+            int MyMethod(Func<int> f) => 1;
+            """,
+            """
+            using System;
+            using System.Threading.Tasks;
+            
+            int result = 
+                await MyMethodAsync(
+                    1,
+                    2
+                );
+            int result2 = 
+                await MyMethodAsync(
+                    1, 2
+                );
+            int result3 = 
+                await MyMethodAsync(
+                    1, 2
+                );
+            int result4 = 
+                MyMethod(
+                    1, 2
+                );
+            int result5 = 
+                MyMethod(
+                    1, 2
+                );
+            int result6 = 
+                MyMethod(
+                    1, 2
+                );
+
+            Task<int> MyMethodAsync(int a, int b) => Task.FromResult(1);
+            int MyMethod(Func<int> f) => 1;
             """,
             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );

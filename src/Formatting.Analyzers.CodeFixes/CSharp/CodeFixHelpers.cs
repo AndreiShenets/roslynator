@@ -1,5 +1,6 @@
 ﻿// Copyright (c) .NET Foundation and Contributors. Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -523,6 +524,23 @@ internal static class CodeFixHelpers
             cancellationToken);
     }
 
+    public static List<TextChange> GetListTextChanges(
+        Document document,
+        ArgumentListSyntax argumentList,
+        ListFixMode fixMode = ListFixMode.Fix,
+        CancellationToken cancellationToken = default
+    )
+    {
+        return GetFixListChanges(
+            document,
+            argumentList,
+            argumentList.OpenParenToken,
+            argumentList.Arguments,
+            fixMode,
+            cancellationToken
+        );
+    }
+
     public static Task<Document> FixListAsync(
         Document document,
         BracketedArgumentListSyntax bracketedArgumentList,
@@ -812,5 +830,150 @@ internal static class CodeFixHelpers
         FormattingVerifier.VerifyChangedSpansAreWhitespace(containingNode, textChanges);
 
         return textChanges;
+    }
+
+    public static (bool Applicable, IReadOnlyList<TextChange> Changes) FixIndentationNonHarmfully(
+        SyntaxNodeOrToken nodeOrToken,
+        string expectedIndentation,
+        TextLineCollection textLines
+    )
+    {
+        SyntaxTriviaList leadingTrivia = nodeOrToken.GetLeadingTrivia();
+
+        LinePosition nodeLinePosition = textLines.GetLinePosition(nodeOrToken.SpanStart);
+        bool nodeIsTheFirstCharOnLine = nodeLinePosition.Character == 0;
+
+        bool triviaExists = leadingTrivia.Any();
+        if (!triviaExists && !nodeIsTheFirstCharOnLine)
+        {
+            return (false, Array.Empty<TextChange>());
+        }
+
+        // If trivia already has expected indentation length then return
+        int triviaLength = leadingTrivia.Span.Length;
+        if (triviaLength == expectedIndentation.Length)
+        {
+            return (true, Array.Empty<TextChange>());
+        }
+
+        LinePosition triviaLinePosition = textLines.GetLinePosition(leadingTrivia.Span.Start);
+
+        // If trivia starts from the first character of the line, then it is fixing case, otherwise return
+        if (triviaLinePosition.Character > 0)
+        {
+            return (false, Array.Empty<TextChange>());
+        }
+
+        List<TextChange> textChanges = [];
+
+        if (triviaLength == 0)
+        {
+            // If trivia is empty, we can add expected indentation
+            textChanges.Add(
+                new TextChange(
+                    new TextSpan(
+                        // If node is the first character on the line, then the leading trivia span == default,
+                        // which is invalid in this case and leads to no changes
+                        nodeIsTheFirstCharOnLine
+                            ? nodeOrToken.SpanStart
+                            : leadingTrivia.Span.Start,
+                        0
+                    ),
+                    expectedIndentation
+                )
+            );
+            return (true, textChanges);
+        }
+
+        if (triviaLength < expectedIndentation.Length)
+        {
+            // If trivia is shorter than expected indentation, we can add whitespace that are missed
+            textChanges.Add(
+                new TextChange(
+                    new TextSpan(leadingTrivia.Span.Start, 0),
+                    expectedIndentation.Substring(0, expectedIndentation.Length - triviaLength)
+                )
+            );
+            return (true, textChanges);
+        }
+
+        // The worst case: trivial length is greater than expected indentation length.
+        // We need to try to shrink it, but there might be some comments, which must stay intact
+        // If comments are found, then the user must manually fix the indentation
+
+        int requiredShrink = expectedIndentation.Length;
+        int endCount = leadingTrivia.Count - 1;
+        int foundShrinkCapacity = 0;
+        int triviaIndex = 0;
+
+        // A try to shrink from the start
+        while (triviaIndex <= endCount)
+        {
+            SyntaxTrivia trivia = leadingTrivia[triviaIndex];
+            if (trivia.IsKind(SyntaxKind.SingleLineCommentTrivia)
+                || trivia.IsKind(SyntaxKind.MultiLineCommentTrivia)
+            )
+            {
+                return (false, Array.Empty<TextChange>());
+            }
+
+            foundShrinkCapacity += trivia.Span.Length;
+            if (foundShrinkCapacity >= requiredShrink)
+            {
+                break;
+            }
+
+            ++triviaIndex;
+        }
+
+        if (foundShrinkCapacity > 0)
+        {
+            // Shrink what we can
+            textChanges.Add(
+                new TextChange(
+                    new TextSpan(leadingTrivia.Span.Start, foundShrinkCapacity),
+                    new string(' ', foundShrinkCapacity)
+                )
+            );
+
+            requiredShrink -= foundShrinkCapacity;
+            foundShrinkCapacity = 0;
+        }
+
+        if (foundShrinkCapacity < requiredShrink)
+        {
+            while (triviaIndex >= 0)
+            {
+                // Logically, the case with comments should not be possible here, but just to be sure
+                SyntaxTrivia trivia = leadingTrivia[triviaIndex];
+                if (trivia.IsKind(SyntaxKind.SingleLineCommentTrivia)
+                    || trivia.IsKind(SyntaxKind.MultiLineCommentTrivia)
+                )
+                {
+                    return (false, Array.Empty<TextChange>());
+                }
+
+                foundShrinkCapacity += trivia.Span.Length;
+                if (foundShrinkCapacity >= requiredShrink)
+                {
+                    break;
+                }
+
+                --triviaIndex;
+            }
+
+            if (foundShrinkCapacity > 0)
+            {
+                // Shrink what we can
+                textChanges.Add(
+                    new TextChange(
+                        new TextSpan(leadingTrivia.Last().Span.End - foundShrinkCapacity, foundShrinkCapacity),
+                        new string(' ', foundShrinkCapacity)
+                    )
+                );
+            }
+        }
+
+        return (true, textChanges);
     }
 }

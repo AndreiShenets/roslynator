@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using Microsoft.CodeAnalysis;
@@ -309,5 +310,24 @@ internal static class SyntaxTriviaAnalysis
         builder.Append(TextSpan.FromBounds(pos, expression.FullSpan.End));
 
         return (TNode)(SyntaxNode)ParseExpression(builder.ToString());
+    }
+
+    public static bool CheckNothingButTriviaInFrontOnTheSameLine(SyntaxToken token, CancellationToken cancellationToken)
+    {
+        SyntaxTree syntaxTree = token.SyntaxTree;
+        Debug.Assert(syntaxTree is not null, "It is not expected to have syntax tree as null here");
+        if (syntaxTree is null)
+        {
+            return false;
+        }
+
+        SourceText text = syntaxTree.GetText(cancellationToken);
+        LinePosition linePosition = text.Lines.GetLinePosition(token.SpanStart);
+        LinePosition triviaLinePosition = text.Lines.GetLinePosition(token.LeadingTrivia.Span.Start);
+
+        // Trivia must start from the beginning of the line, otherwise there is something in front of it
+        return triviaLinePosition.Character == 0
+            // Token should start right after the trivia
+            && token.LeadingTrivia.Span.Length == linePosition.Character;
     }
 }

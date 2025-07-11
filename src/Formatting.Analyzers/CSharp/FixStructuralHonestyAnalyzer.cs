@@ -2,8 +2,6 @@
 
 #nullable enable
 
-using System;
-using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Threading;
 using Microsoft.CodeAnalysis;
@@ -12,7 +10,6 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Text;
 using Roslynator.CSharp;
-using Roslynator.CSharp.CodeStyle;
 
 namespace Roslynator.Formatting.CSharp;
 
@@ -38,9 +35,12 @@ public sealed class FixStructuralHonestyAnalyzer : BaseDiagnosticAnalyzer
     {
         base.Initialize(context);
 
-        context.RegisterSyntaxNodeAction(f => AnalyzeSimpleLambdaExpression(f), SyntaxKind.SimpleLambdaExpression);
-        context.RegisterSyntaxNodeAction(f => AnalyzeParenthesizedLambdaExpression(f), SyntaxKind.ParenthesizedLambdaExpression);
-
+        context.RegisterSyntaxNodeAction(
+            f => AnalyzeNode(f),
+            SyntaxKind.SimpleLambdaExpression,
+            SyntaxKind.ParenthesizedLambdaExpression,
+            SyntaxKind.InvocationExpression
+        );
         // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.NewKeyword);
         // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.AnonymousMethodExpression);
         // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.AnonymousObjectCreationExpression);
@@ -74,232 +74,49 @@ public sealed class FixStructuralHonestyAnalyzer : BaseDiagnosticAnalyzer
 #endif
     }
 
-    private void AnalyzeSimpleLambdaExpression(SyntaxNodeAnalysisContext context)
+    private static void AnalyzeNode(SyntaxNodeAnalysisContext context)
     {
         CancellationToken cancellationToken = context.CancellationToken;
-        SimpleLambdaExpressionSyntax lambda = (SimpleLambdaExpressionSyntax)context.Node;
+        SyntaxNode node = context.Node;
 
-        if (lambda.IsSingleLine(cancellationToken: cancellationToken))
+        if (node.IsSingleLine(cancellationToken: cancellationToken))
         {
             return;
         }
 
-        TextSpan span = lambda.GetSpan();
+        node =
+            node switch
+            {
+                // Correction of the node as for awaitables the whole awaitable expression should be analyzed
+                InvocationExpressionSyntax invocation when invocation.Parent is AwaitExpressionSyntax
+                    => invocation.Parent,
+                _ => node
+            };
+
+        SyntaxToken firstToken = node.GetFirstToken();
+        SyntaxToken lastToken = node.GetLastToken();
+
+        if (
+            SyntaxTriviaAnalysis.CheckNothingButTriviaInFrontOnTheSameLine(firstToken, cancellationToken)
+            // The last token, for example a bracket, is most of the time must be on the dedicated line and properly indented.
+            && SyntaxTriviaAnalysis.CheckNothingButTriviaInFrontOnTheSameLine(lastToken, cancellationToken)
+        )
+        {
+            AnalyzerConfigOptions configOptions = context.GetConfigOptions();
+            IndentationAnalysis indentationAnalysis =
+                SyntaxTriviaAnalysis.AnalyzeIndentation(node, configOptions, cancellationToken);
+
+            // ToDo: Indentation check here
+
+            return;
+        }
+
+        TextSpan span = node.GetSpan();
 
         DiagnosticHelpers.ReportDiagnostic(
             context,
             DiagnosticRules.FixStructuralHonesty,
-            Location.Create(
-                lambda.SyntaxTree,
-                span
-            )
+            Location.Create(node.SyntaxTree, span)
         );
-    }
-
-    private void AnalyzeParenthesizedLambdaExpression(SyntaxNodeAnalysisContext context)
-    {
-        ParenthesizedLambdaExpressionSyntax lambda = (ParenthesizedLambdaExpressionSyntax)context.Node;
-    }
-
-    private static void AnalyzeStructuralHonesty(SyntaxNodeAnalysisContext context)
-    {
-        TargetBracesStyle bracesStyle = context.GetTargetBracesStyle();
-
-        if (bracesStyle == TargetBracesStyle.None)
-        {
-            return;
-        }
-
-        CancellationToken cancellationToken = context.CancellationToken;
-
-        var binaryExpression = (BinaryExpressionSyntax)context.Node;
-
-        ExpressionSyntax left = binaryExpression.Left;
-
-        if (left.IsMissing)
-        {
-            return;
-        }
-
-        ExpressionSyntax right = binaryExpression.Right;
-
-        if (right.IsMissing)
-        {
-            return;
-        }
-
-        SyntaxToken firstToken = binaryExpression.GetFirstToken();
-        SyntaxToken lastToken = binaryExpression.GetLastToken();
-
-        IEnumerable<(SyntaxNode Parent, SyntaxToken OpenBracket, SyntaxToken CloseBracket)> nodesWithBrackets =
-            FindNodesWithBrackets(binaryExpression);
-
-        SemanticModel semanticModel = context.SemanticModel;
-
-        foreach ((SyntaxNode parent, SyntaxToken openBracket, SyntaxToken closeBracket) in nodesWithBrackets)
-        {
-            if (openBracket.GetSpanStartLine(cancellationToken) == closeBracket.GetSpanEndLine(cancellationToken))
-            {
-                continue;
-            }
-
-            if (ShouldFixOpeningBracket(bracesStyle, openBracket, firstToken, cancellationToken)
-                || ShouldFixClosingBracket(bracesStyle, parent, closeBracket, lastToken, cancellationToken)
-            )
-            {
-                TextSpan span = TextSpan.FromBounds(openBracket.SpanStart, closeBracket.Span.End);
-
-                Diagnostic? existingDiagnostic =
-                    semanticModel.GetDiagnostic(
-                        DiagnosticIdentifiers.FixStructuralHonesty,
-                        span,
-                        cancellationToken
-                    );
-
-                if (existingDiagnostic is not null)
-                {
-                    continue;
-                }
-
-                DiagnosticHelpers.ReportDiagnostic(
-                    context,
-                    DiagnosticRules.FixStructuralHonesty,
-                    Location.Create(
-                        parent.SyntaxTree,
-                        span
-                    ),
-                    GetTitle(parent)
-                );
-            }
-        }
-    }
-
-    private static IEnumerable<(SyntaxNode Parent, SyntaxToken OpenBracket, SyntaxToken CloseBracket)>
-        FindNodesWithBrackets(SyntaxNode syntaxNode)
-    {
-        // Braced nodes can be in braces and in braces and ...
-        // if the node itself is not ParenthesizedExpressionSyntax or the first parent doesn't have parentheses
-        // then further processing should be stopped, otherwise multiple diagnostics for the same place will be reported
-
-        SyntaxNode? parent = syntaxNode;
-        int depth = 0;
-        while (parent is not null)
-        {
-            var stop = false;
-
-            switch (parent)
-            {
-                case ParenthesizedExpressionSyntax parenthesizedExpressionSyntax:
-                    yield return (
-                        parent,
-                        parenthesizedExpressionSyntax.OpenParenToken,
-                        parenthesizedExpressionSyntax.CloseParenToken
-                    );
-                    break;
-                case IfStatementSyntax ifStatement:
-                    yield return (
-                        parent,
-                        ifStatement.OpenParenToken,
-                        ifStatement.CloseParenToken
-                    );
-                    // If-statement is considered as a final node.
-                    stop = true;
-                    break;
-                case WhileStatementSyntax whileStatement:
-                    yield return (
-                        parent,
-                        whileStatement.OpenParenToken,
-                        whileStatement.CloseParenToken
-                    );
-                    // While-statement is considered as a final node.
-                    stop = true;
-                    break;
-                case DoStatementSyntax doWhileStatement:
-                    yield return (
-                        parent,
-                        doWhileStatement.OpenParenToken,
-                        doWhileStatement.CloseParenToken
-                    );
-                    // Do-while-statement is considered as a final node.
-                    stop = true;
-                    break;
-                default:
-                    if (depth > 0)
-                    {
-                        stop = true;
-                    }
-                    break;
-            }
-
-            depth++;
-
-            if (stop)
-            {
-                break;
-            }
-
-            parent = parent.FirstAncestor<SyntaxNode>();
-        }
-    }
-
-    private static string GetTitle(SyntaxNode node)
-    {
-        return node.Kind() switch
-        {
-            SyntaxKind.IfStatement
-                => "an 'if' statement",
-
-            SyntaxKind.ParenthesizedExpression
-                => "a parenthesized expression",
-
-            SyntaxKind.WhileStatement
-                => "a 'while' statement",
-
-            SyntaxKind.DoStatement
-                => "a 'do-while' statement",
-
-            _ => throw new InvalidOperationException()
-        };
-    }
-
-    private static bool ShouldFixOpeningBracket(
-        TargetBracesStyle bracesStyle,
-        SyntaxToken leftBracket,
-        SyntaxToken first,
-        CancellationToken cancellationToken
-    )
-    {
-        if ((bracesStyle & TargetBracesStyle.Opening) == 0)
-        {
-            return false;
-        }
-
-        return leftBracket.GetSpanStartLine(cancellationToken) == first.GetSpanStartLine(cancellationToken);
-    }
-
-    private static bool ShouldFixClosingBracket(
-        TargetBracesStyle bracesStyle,
-        SyntaxNode listNode,
-        SyntaxToken rightBracket,
-        SyntaxToken last,
-        CancellationToken cancellationToken
-    )
-    {
-        if ((bracesStyle & TargetBracesStyle.Closing) == 0)
-        {
-            return false;
-        }
-
-        if (rightBracket.GetSpanEndLine(cancellationToken) == last.GetSpanEndLine(cancellationToken))
-        {
-            return true;
-        }
-
-        SyntaxTrivia listNodeIndent =
-            SyntaxTriviaAnalysis.DetermineIndentation(listNode, searchInAccessors: false, cancellationToken);
-        SyntaxTrivia bracketIndent =
-            SyntaxTriviaAnalysis.DetermineIndentation(rightBracket, searchInAccessors: false, cancellationToken);
-
-        return listNodeIndent.Span.Length != bracketIndent.Span.Length;
     }
 }
