@@ -114,72 +114,6 @@ public sealed class FixStructuralHonestyFixProvider : BaseCodeFixProvider
         }
 
         return document;
-
-        // string endOfLine = SyntaxTriviaAnalysis.DetermineEndOfLine(node).ToString();
-        //
-        // List<TextChange> textChanges = [];
-        //
-        // if ((bracesStyle & TargetBracesStyle.Opening) != 0)
-        // {
-        //     SyntaxToken nextToken = openNodeOrToken.GetNextToken();
-        //
-        //     int bracketLine = openNodeOrToken.GetSpanStartLine(cancellationToken);
-        //     int nextTokenLine = nextToken.GetSpanStartLine(cancellationToken);
-        //
-        //     if (bracketLine == nextTokenLine)
-        //     {
-        //         string indentation = SyntaxTriviaAnalysis.GetIncreasedIndentation(node, configOptions, cancellationToken);
-        //
-        //         textChanges.Add(
-        //             new TextChange(
-        //                 TextSpan.FromBounds(openNodeOrToken.Span.End, nextToken.SpanStart),
-        //                 endOfLine + indentation
-        //             )
-        //         );
-        //     }
-        // }
-        //
-        // if ((bracesStyle & TargetBracesStyle.Closing) != 0)
-        // {
-        //     SyntaxToken previousToken = closeNodeOrToken.GetPreviousToken();
-        //
-        //     int bracketLine = closeNodeOrToken.GetSpanStartLine(cancellationToken);
-        //     int previousTokenLine = previousToken.GetSpanEndLine(cancellationToken);
-        //
-        //     if (bracketLine == previousTokenLine)
-        //     {
-        //         string indentation = SyntaxTriviaAnalysis.DetermineIndentation(node, searchInAccessors: false, cancellationToken).ToString();
-        //
-        //         textChanges.Add(
-        //             new TextChange(
-        //                 closeNodeOrToken.Span,
-        //                 endOfLine + indentation + closeNodeOrToken
-        //             )
-        //         );
-        //     }
-        //     else
-        //     {
-        //         SyntaxTrivia listNodeIndent = SyntaxTriviaAnalysis.DetermineIndentation(node, searchInAccessors: false, cancellationToken);
-        //         SyntaxTrivia bracketIndent = SyntaxTriviaAnalysis.DetermineIndentation(closeNodeOrToken, searchInAccessors: false, cancellationToken);
-        //         if (listNodeIndent.Span.Length != bracketIndent.Span.Length)
-        //         {
-        //             TextSpan span =
-        //                 (bracketIndent.Span.Length == 0) // there is no indentation
-        //                     ? new TextSpan(closeNodeOrToken.Span.Start, 0)
-        //                     : bracketIndent.Span;
-        //
-        //             textChanges.Add(
-        //                 new TextChange(
-        //                     span,
-        //                     listNodeIndent.ToString()
-        //                 )
-        //             );
-        //         }
-        //     }
-        // }
-        //
-        // return await document.WithTextChangesAsync(textChanges, cancellationToken).ConfigureAwait(false);
-
     }
 
     private static async Task<Document> FixInvocationExpressionAsync(
@@ -195,9 +129,9 @@ public sealed class FixStructuralHonestyFixProvider : BaseCodeFixProvider
 
         ArgumentListSyntax argumentList = node.ArgumentList;
 
-        TextLineCollection textLines = (await node.SyntaxTree.GetTextAsync(cancellationToken)).Lines;
+        SourceText sourceText = await node.SyntaxTree.GetTextAsync(cancellationToken);
+        TextLineCollection textLines = sourceText.Lines;
 
-        int indentationLength = indentationAnalysis.IndentationLength;
         string increasedIndentation = indentationAnalysis.GetIncreasedIndentation();
         string childrenIncreasedIndentation = increasedIndentation + indentationAnalysis.GetSingleIndentation();
 

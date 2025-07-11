@@ -901,79 +901,58 @@ internal static class CodeFixHelpers
         // We need to try to shrink it, but there might be some comments, which must stay intact
         // If comments are found, then the user must manually fix the indentation
 
-        int requiredShrink = expectedIndentation.Length;
-        int endCount = leadingTrivia.Count - 1;
-        int foundShrinkCapacity = 0;
-        int triviaIndex = 0;
+        int requiredShrink = triviaLength - expectedIndentation.Length;
 
         // A try to shrink from the start
-        while (triviaIndex <= endCount)
+        SyntaxTrivia trivia = leadingTrivia.First();
+        requiredShrink = ShrinkTrivia(trivia, requiredShrink, textChanges);
+
+        // Still something to shrink?
+        if (requiredShrink > 0)
         {
-            SyntaxTrivia trivia = leadingTrivia[triviaIndex];
-            if (trivia.IsKind(SyntaxKind.SingleLineCommentTrivia)
-                || trivia.IsKind(SyntaxKind.MultiLineCommentTrivia)
-            )
-            {
-                return (false, Array.Empty<TextChange>());
-            }
-
-            foundShrinkCapacity += trivia.Span.Length;
-            if (foundShrinkCapacity >= requiredShrink)
-            {
-                break;
-            }
-
-            ++triviaIndex;
-        }
-
-        if (foundShrinkCapacity > 0)
-        {
-            // Shrink what we can
-            textChanges.Add(
-                new TextChange(
-                    new TextSpan(leadingTrivia.Span.Start, foundShrinkCapacity),
-                    new string(' ', foundShrinkCapacity)
-                )
-            );
-
-            requiredShrink -= foundShrinkCapacity;
-            foundShrinkCapacity = 0;
-        }
-
-        if (foundShrinkCapacity < requiredShrink)
-        {
-            while (triviaIndex >= 0)
-            {
-                // Logically, the case with comments should not be possible here, but just to be sure
-                SyntaxTrivia trivia = leadingTrivia[triviaIndex];
-                if (trivia.IsKind(SyntaxKind.SingleLineCommentTrivia)
-                    || trivia.IsKind(SyntaxKind.MultiLineCommentTrivia)
-                )
-                {
-                    return (false, Array.Empty<TextChange>());
-                }
-
-                foundShrinkCapacity += trivia.Span.Length;
-                if (foundShrinkCapacity >= requiredShrink)
-                {
-                    break;
-                }
-
-                --triviaIndex;
-            }
-
-            if (foundShrinkCapacity > 0)
-            {
-                // Shrink what we can
-                textChanges.Add(
-                    new TextChange(
-                        new TextSpan(leadingTrivia.Last().Span.End - foundShrinkCapacity, foundShrinkCapacity),
-                        new string(' ', foundShrinkCapacity)
-                    )
-                );
-            }
+            trivia = leadingTrivia.Last();
+            ShrinkTrivia(trivia, requiredShrink, textChanges);
         }
 
         return (true, textChanges);
+
+        static int ShrinkTrivia(SyntaxTrivia trivia, int requiredShrink, List<TextChange> textChanges)
+        {
+            if (requiredShrink <= 0)
+            {
+                return 0;
+            }
+
+            if (
+                trivia.IsKind(SyntaxKind.SingleLineCommentTrivia)
+                || trivia.IsKind(SyntaxKind.MultiLineCommentTrivia)
+            )
+            {
+                return requiredShrink;
+            }
+
+            int shrinkCapacity = trivia.Span.Length;
+
+            if (shrinkCapacity > 0)
+            {
+                int newTriviaLength =
+                    requiredShrink <= shrinkCapacity
+                        ? shrinkCapacity - requiredShrink
+                        : 0;
+
+                // Shrink what we can
+                textChanges.Add(
+                    new TextChange(
+                        new TextSpan(trivia.Span.Start, trivia.Span.Length),
+                        new string(' ', newTriviaLength)
+                    )
+                );
+
+                // Result can be less than zero
+                requiredShrink -= shrinkCapacity;
+            }
+
+            return requiredShrink;
+        }
     }
 }

@@ -41,7 +41,7 @@ public sealed class IndentationFixingWalker : CSharpSyntaxWalker
     private readonly string _singleIndentation;
     private readonly TextLineCollection _textLines;
 
-    private readonly Dictionary<SyntaxNodeOrToken, string> _indentationCache = new();
+    private readonly Dictionary<SyntaxNode, string> _indentationCache = new();
 
     public List<TextChange> TextChanges { get; } = [];
 
