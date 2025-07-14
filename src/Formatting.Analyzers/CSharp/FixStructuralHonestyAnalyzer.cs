@@ -10,6 +10,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Text;
 using Roslynator.CSharp;
+using Roslynator.CSharp.SyntaxWalkers;
 
 namespace Roslynator.Formatting.CSharp;
 
@@ -102,13 +103,45 @@ public sealed class FixStructuralHonestyAnalyzer : BaseDiagnosticAnalyzer
             && SyntaxTriviaAnalysis.CheckNothingButTriviaInFrontOnTheSameLine(lastToken, cancellationToken)
         )
         {
+            // Indentation analysis should be done on the parent of the node.
+            // Weather the indentation is correct, we can say only relatively to its parent.
+
+            SyntaxNode? parent = node.Parent;
+            // Argument syntax is kind of a virtual wrapper over the real argument.
+            // Only the real argument should be checked for indentation.
+            if (parent is ArgumentSyntax)
+            {
+                parent = parent.Parent;
+            }
+
+            if (parent is null)
+            {
+                // If the node has no parent, then it is a root node, so we cannot analyze its indentation.
+                // Is it even possible to come here?
+                return;
+            }
+
+            SourceText sourceText = node.SyntaxTree.GetText(cancellationToken);
+            TextLineCollection textLines = sourceText.Lines;
+
             AnalyzerConfigOptions configOptions = context.GetConfigOptions();
             IndentationAnalysis indentationAnalysis =
-                SyntaxTriviaAnalysis.AnalyzeIndentation(node, configOptions, cancellationToken);
+                //SyntaxTriviaAnalysis.AnalyzeIndentation(node, configOptions, cancellationToken);
+                SyntaxTriviaAnalysis.AnalyzeIndentation(parent, configOptions, cancellationToken);
 
-            // ToDo: Indentation check here
+            IndentationAnalyzingWalker walker =
+                new(
+                    node,
+                    indentationAnalysis.GetIncreasedIndentation(),
+                    indentationAnalysis.GetSingleIndentation(),
+                    textLines
+                );
 
-            return;
+            walker.Visit(node);
+            if (walker.Valid)
+            {
+                return;
+            }
         }
 
         TextSpan span = node.GetSpan();

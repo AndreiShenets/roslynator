@@ -59,6 +59,13 @@ public sealed class IndentationFixingWalker : CSharpSyntaxWalker
         {
             if (_indentationCache.TryGetValue(parent, out string? indentation))
             {
+                // Blocks should have indentation of the parent node
+                if (node is BlockSyntax)
+                {
+                    expectedIndentation = indentation;
+                    break;
+                }
+
                 expectedIndentation = indentation + _singleIndentation;
                 break;
             }

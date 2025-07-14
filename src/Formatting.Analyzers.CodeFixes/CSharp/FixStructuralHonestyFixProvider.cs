@@ -76,6 +76,17 @@ public sealed class FixStructuralHonestyFixProvider : BaseCodeFixProvider
         CancellationToken cancellationToken
     )
     {
+        // Indentation analysis should be done on the parent of the node.
+        // Weather the indentation is correct, we can say only relatively to parent.
+        if (node.Parent is null)
+        {
+            return document;
+        }
+
+        AnalyzerConfigOptions configOptions = document.GetConfigOptions(node.SyntaxTree);
+        IndentationAnalysis indentationAnalysis =
+            SyntaxTriviaAnalysis.AnalyzeIndentation(node.Parent, configOptions, cancellationToken);
+
         // Assumption:
         // If we are here, then the node is multilined we can expect that the first and last tokens are on the different lines.
         switch (node.Kind())
@@ -90,6 +101,7 @@ public sealed class FixStructuralHonestyFixProvider : BaseCodeFixProvider
                     await FixInvocationExpressionAsync(
                         document,
                         invocationExpression,
+                        indentationAnalysis,
                         invocationExpression.GetFirstToken(),
                         cancellationToken
                     )
@@ -103,6 +115,7 @@ public sealed class FixStructuralHonestyFixProvider : BaseCodeFixProvider
                     await FixInvocationExpressionAsync(
                         document,
                         invocationExpressionFromAwaitExpression,
+                        indentationAnalysis,
                         awaitExpression.GetFirstToken(),
                         cancellationToken
                     )
@@ -119,14 +132,11 @@ public sealed class FixStructuralHonestyFixProvider : BaseCodeFixProvider
     private static async Task<Document> FixInvocationExpressionAsync(
         Document document,
         InvocationExpressionSyntax node,
+        IndentationAnalysis indentationAnalysis,
         SyntaxToken firstToken,
         CancellationToken cancellationToken
     )
     {
-        AnalyzerConfigOptions configOptions = document.GetConfigOptions(node.SyntaxTree);
-        IndentationAnalysis indentationAnalysis =
-            SyntaxTriviaAnalysis.AnalyzeIndentation(node, configOptions, cancellationToken);
-
         ArgumentListSyntax argumentList = node.ArgumentList;
 
         SourceText sourceText = await node.SyntaxTree.GetTextAsync(cancellationToken);

@@ -838,6 +838,13 @@ internal static class CodeFixHelpers
         TextLineCollection textLines
     )
     {
+        // Argument syntax is kind of a virtual wrapper over the real argument.
+        // Only the real argument should be fixed.
+        if (nodeOrToken.IsNode && nodeOrToken.AsNode() is ArgumentSyntax)
+        {
+            return (false, Array.Empty<TextChange>());
+        }
+
         SyntaxTriviaList leadingTrivia = nodeOrToken.GetLeadingTrivia();
 
         LinePosition nodeLinePosition = textLines.GetLinePosition(nodeOrToken.SpanStart);
@@ -849,19 +856,19 @@ internal static class CodeFixHelpers
             return (false, Array.Empty<TextChange>());
         }
 
-        // If trivia already has expected indentation length then return
-        int triviaLength = leadingTrivia.Span.Length;
-        if (triviaLength == expectedIndentation.Length)
-        {
-            return (true, Array.Empty<TextChange>());
-        }
-
         LinePosition triviaLinePosition = textLines.GetLinePosition(leadingTrivia.Span.Start);
 
         // If trivia starts from the first character of the line, then it is fixing case, otherwise return
         if (triviaLinePosition.Character > 0)
         {
             return (false, Array.Empty<TextChange>());
+        }
+
+        // If trivia already has expected indentation length then return
+        int triviaLength = leadingTrivia.Span.Length;
+        if (triviaLength == expectedIndentation.Length)
+        {
+            return (true, Array.Empty<TextChange>());
         }
 
         List<TextChange> textChanges = [];
@@ -903,14 +910,14 @@ internal static class CodeFixHelpers
 
         int requiredShrink = triviaLength - expectedIndentation.Length;
 
-        // A try to shrink from the start
-        SyntaxTrivia trivia = leadingTrivia.First();
+        // A try to shrink from the end
+        SyntaxTrivia trivia = leadingTrivia.Last();
         requiredShrink = ShrinkTrivia(trivia, requiredShrink, textChanges);
 
-        // Still something to shrink?
+        // Still something to shrink? Then try to shrink from the beginning
         if (requiredShrink > 0)
         {
-            trivia = leadingTrivia.Last();
+            trivia = leadingTrivia.First();
             ShrinkTrivia(trivia, requiredShrink, textChanges);
         }
 
