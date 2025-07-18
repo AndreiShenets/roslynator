@@ -94,54 +94,46 @@ public sealed class FixStructuralHonestyAnalyzer : BaseDiagnosticAnalyzer
                 _ => node
             };
 
-        SyntaxToken firstToken = node.GetFirstToken();
-        SyntaxToken lastToken = node.GetLastToken();
-
-        if (
-            SyntaxTriviaAnalysis.CheckNothingButTriviaInFrontOnTheSameLine(firstToken, cancellationToken)
-            // The last token, for example a bracket, is most of the time must be on the dedicated line and properly indented.
-            && SyntaxTriviaAnalysis.CheckNothingButTriviaInFrontOnTheSameLine(lastToken, cancellationToken)
-        )
+        // Indentation analysis should be done on the parent of the node.
+        // Weather the indentation is correct, we can say only relatively to its parent.
+        SyntaxNode? parent = node.Parent;
+        // Argument syntax is kind of a virtual wrapper over the real argument.
+        // Only the real argument should be checked for indentation.
+        if (parent is ArgumentSyntax)
         {
-            // Indentation analysis should be done on the parent of the node.
-            // Weather the indentation is correct, we can say only relatively to its parent.
+            parent = parent.Parent;
+        }
 
-            SyntaxNode? parent = node.Parent;
-            // Argument syntax is kind of a virtual wrapper over the real argument.
-            // Only the real argument should be checked for indentation.
-            if (parent is ArgumentSyntax)
-            {
-                parent = parent.Parent;
-            }
+        if (parent is null)
+        {
+            // If the node has no parent, then it is a root node, so we cannot analyze its indentation.
+            // Is it even possible to come here?
+            return;
+        }
 
-            if (parent is null)
-            {
-                // If the node has no parent, then it is a root node, so we cannot analyze its indentation.
-                // Is it even possible to come here?
-                return;
-            }
+        SourceText sourceText = node.SyntaxTree.GetText(cancellationToken);
+        TextLineCollection textLines = sourceText.Lines;
 
-            SourceText sourceText = node.SyntaxTree.GetText(cancellationToken);
-            TextLineCollection textLines = sourceText.Lines;
+        AnalyzerConfigOptions configOptions = context.GetConfigOptions();
+        IndentationAnalysis indentationAnalysis =
+            SyntaxTriviaAnalysis.AnalyzeIndentation(parent, configOptions, cancellationToken);
 
-            AnalyzerConfigOptions configOptions = context.GetConfigOptions();
-            IndentationAnalysis indentationAnalysis =
-                //SyntaxTriviaAnalysis.AnalyzeIndentation(node, configOptions, cancellationToken);
-                SyntaxTriviaAnalysis.AnalyzeIndentation(parent, configOptions, cancellationToken);
+        bool issueFound = false;
 
-            IndentationAnalyzingWalker walker =
-                new(
-                    node,
-                    indentationAnalysis.GetIncreasedIndentation(),
-                    indentationAnalysis.GetSingleIndentation(),
-                    textLines
-                );
+        IndentationAnalyzingWalker walker =
+            new(
+                node.SyntaxTree,
+                indentationAnalysis.GetIncreasedIndentation(),
+                indentationAnalysis.GetSingleIndentation(),
+                textLines,
+                (_, _) => issueFound = true // this also return true to stop the walker after the first issue
+            );
 
-            walker.Visit(node);
-            if (walker.Valid)
-            {
-                return;
-            }
+        walker.Visit(node);
+
+        if (!issueFound)
+        {
+            return;
         }
 
         TextSpan span = node.GetSpan();
