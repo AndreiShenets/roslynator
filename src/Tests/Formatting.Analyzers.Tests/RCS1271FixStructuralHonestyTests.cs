@@ -23,13 +23,13 @@ public class RCS1271FixStructuralHonestyTests :
 
             int result = 
             [|await MyMethodAsync(
-                // Comment
+                [|// Comment
                 async (int a, int b, int c) =>
                 {
                     // Comment
                     return await Task.Run(() => 10);
                     // Comment
-                }
+                }|]
             )|];
 
             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
