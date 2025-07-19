@@ -25,6 +25,8 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
         TextChange textChange
     );
 
+    private static readonly char[] SplitChars = ['\r', '\n'];
+
     private readonly SyntaxTree _syntaxTree;
     private readonly string _expectedIndentation;
     private readonly string _singleIndentation;
@@ -57,10 +59,37 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
         // Only the real argument should be checked for indentation.
         if (node is null or ArgumentSyntax)
         {
+            base.Visit(node);
             return;
         }
 
-        string expectedIndentation = GetExpectedIndentation(node);
+        string expectedIndentation;
+
+        if (!node.IsMultiLine())
+        {
+            expectedIndentation = GetExpectedIndentation(node);
+            CheckIndentation(node, expectedIndentation);
+
+            return;
+        }
+
+        if (!CheckApplicableForIndentation(node)
+            // If there is trivia in front of then indentation correction might be required
+            && !CheckNothingButTriviaInFront(node)
+        )
+        {
+            base.Visit(node);
+            return;
+        }
+
+        // The correction was already applied
+        if (_indentationCache.ContainsKey(node))
+        {
+            base.Visit(node);
+            return;
+        }
+
+        expectedIndentation = GetExpectedIndentation(node);
 
         (bool applicable, bool stop) = CheckIndentation(node, expectedIndentation);
         if (applicable && stop)
@@ -68,7 +97,7 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
             return;
         }
 
-        if (applicable && !_indentationCache.ContainsKey(node))
+        if (applicable)
         {
             _indentationCache[node] = expectedIndentation;
         }
@@ -76,29 +105,47 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
         base.Visit(node);
     }
 
-    private string GetExpectedIndentation(SyntaxNodeOrToken node)
+    /// <summary>
+    /// Returns <c>false</c> if node is not applicable for indentation and <c>true</c> otherwise.
+    /// </summary>
+    private static bool CheckApplicableForIndentation(SyntaxNodeOrToken nodeOrToken)
     {
-        string expectedIndentation = _expectedIndentation;
-        SyntaxNode? parent = node.Parent;
-        while (parent is not null)
+        SyntaxKind syntaxKind = nodeOrToken.Kind();
+
+        if (syntaxKind is SyntaxKind.ParenthesizedLambdaExpression
+                or SyntaxKind.SimpleLambdaExpression
+                or SyntaxKind.InvocationExpression
+            && nodeOrToken.Parent?.Kind() is not SyntaxKind.AwaitExpression
+        )
         {
-            if (_indentationCache.TryGetValue(parent, out string? indentation))
-            {
-                // Blocks and argument lists should have indentation of the parent node
-                if (node.IsNode && node.AsNode() is BlockSyntax or ArgumentListSyntax)
-                {
-                    expectedIndentation = indentation;
-                    break;
-                }
-
-                expectedIndentation = indentation + _singleIndentation;
-                break;
-            }
-
-            parent = parent.Parent;
+            // The case with AwaitExpression should be handled on its level
+            return true;
         }
 
-        return expectedIndentation;
+        if (syntaxKind == SyntaxKind.AwaitExpression
+            && nodeOrToken.IsNode
+            && nodeOrToken.AsNode()!.ChildNodes()
+                .Any(
+                    c =>
+                        c.Kind() is SyntaxKind.ParenthesizedLambdaExpression
+                            or SyntaxKind.SimpleLambdaExpression
+                            or SyntaxKind.InvocationExpression
+                )
+        )
+        {
+            return true;
+        }
+
+        if (syntaxKind is SyntaxKind.OpenBraceToken
+            or SyntaxKind.CloseBracketToken
+            or SyntaxKind.CloseParenToken
+            or SyntaxKind.CloseBraceToken
+        )
+        {
+            return true;
+        }
+
+        return false;
     }
 
     public override void VisitToken(SyntaxToken token)
@@ -129,7 +176,54 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
                 break;
         }
 
+        if (CheckNothingButWhitespacesInFront(token.SpanStart))
+        {
+            string expectedIndentation = GetExpectedIndentation(token);
+            (bool applicable, bool stop) = CheckIndentation(token, expectedIndentation);
+            if (applicable && stop)
+            {
+                return;
+            }
+        }
+
         base.VisitToken(token);
+    }
+
+    private string GetExpectedIndentation(SyntaxNodeOrToken nodeOrToken)
+    {
+        string expectedIndentation = _expectedIndentation;
+        SyntaxNode? parent = nodeOrToken.Parent;
+        while (parent is not null)
+        {
+            if (_indentationCache.TryGetValue(parent, out string? indentation))
+            {
+                // Blocks and argument lists should have indentation of the parent node
+                if (nodeOrToken.IsNode && nodeOrToken.AsNode() is BlockSyntax)
+                {
+                    expectedIndentation = indentation;
+                    break;
+                }
+
+                if (nodeOrToken.IsToken
+                    && nodeOrToken.AsToken().Kind()
+                        is SyntaxKind.CloseParenToken
+                        or SyntaxKind.OpenBraceToken // Part of a block
+                        or SyntaxKind.CloseBraceToken // Part of a block
+                        or SyntaxKind.CloseBracketToken
+                )
+                {
+                    expectedIndentation = indentation;
+                    break;
+                }
+
+                expectedIndentation = indentation + _singleIndentation;
+                break;
+            }
+
+            parent = parent.Parent;
+        }
+
+        return expectedIndentation;
     }
 
     private (bool Applicable, bool Stop) CheckIndentation(
@@ -141,31 +235,63 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
 
         LinePosition nodeLinePosition = _textLines.GetLinePosition(nodeOrToken.SpanStart);
         bool itemHasTheFirstCharOnLine = nodeLinePosition.Character == 0;
-        bool nothingInFrontButTrivia = CheckNothingButTriviaInFront(nodeOrToken);
-
-        bool triviaExists = leadingTrivia.Any();
+        bool leadingTriviaExists = leadingTrivia.Any();
+        SyntaxTrivia newLine = SyntaxTriviaAnalysis.DetermineEndOfLine(nodeOrToken);
 
         bool stop;
 
-        if (!triviaExists && !itemHasTheFirstCharOnLine)
+        if (!leadingTriviaExists && !itemHasTheFirstCharOnLine)
         {
-            TextSpan span = new (nodeOrToken.SpanStart - nodeLinePosition.Character, nodeLinePosition.Character);
-            IEnumerable<SyntaxTrivia> descendantTrivia = _syntaxTree.GetRoot().DescendantTrivia(span);
+            // It might the case when there is a multi-line comment bound as a trailing trivia to the previous node
+            if (!CheckNothingButMultilineCommentFromParentTrailingTrivia(nodeOrToken, out SyntaxTrivia trivia))
+            {
+                return (Applicable: false, Stop: false);
+            }
 
-            SyntaxTrivia trivia =
-                descendantTrivia.FirstOrDefault(
-                    trivia =>
-                    {
-                        LinePosition linePositionStart = _textLines.GetLinePosition(trivia.SpanStart);
-                        LinePosition linePositionEnd = _textLines.GetLinePosition(trivia.Span.End);
-                        return linePositionStart.Line != nodeLinePosition.Line
-                            && linePositionEnd.Line == nodeLinePosition.Line;
-                    }
+            // This trivia should be formatted as leading trivia for the current node
+            string commentIndentation = GetTriviaIndentation(nodeOrToken, expectedIndentation);
+            if (CheckTriviaIndentation(commentIndentation, trivia.GetContainingList(), newLine))
+            {
+                return (Applicable: true, Stop: true);
+            }
+
+            stop =
+                HandleChange(
+                    new TextSpan(nodeOrToken.SpanStart, 0),
+                    newLine + expectedIndentation
                 );
 
-            if (trivia != default && nothingInFrontButTrivia)
+            // No trivia to do correction, so we are done here
+            return (Applicable: true, Stop: stop);
+        }
+
+        if (leadingTriviaExists)
+        {
+            string commentIndentation = GetTriviaIndentation(nodeOrToken, expectedIndentation);
+            if (CheckTriviaIndentation(commentIndentation, leadingTrivia, newLine))
             {
-                SyntaxTrivia newLine = SyntaxTriviaAnalysis.DetermineEndOfLine(nodeOrToken);
+                return (Applicable: true, Stop: true);
+            }
+
+            bool nothingButWhitespaceTriviaInFront = CheckNothingButWhitespacesInFront(nodeOrToken.SpanStart);
+            if (nothingButWhitespaceTriviaInFront)
+            {
+                if (nodeLinePosition.Character != expectedIndentation.Length)
+                {
+                    int lineStart = nodeOrToken.SpanStart - nodeLinePosition.Character;
+                    stop =
+                        HandleChange(
+                            new TextSpan(lineStart, nodeLinePosition.Character),
+                            expectedIndentation
+                        );
+                    if (stop)
+                    {
+                        return (Applicable: true, Stop: true);
+                    }
+                }
+            }
+            else if (CheckApplicableForIndentation(nodeOrToken))
+            {
                 stop =
                     HandleChange(
                         new TextSpan(nodeOrToken.SpanStart, 0),
@@ -176,191 +302,226 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
                     return (Applicable: true, Stop: true);
                 }
             }
-
-            return (Applicable: false, Stop: false);
         }
-
-        LinePosition triviaLinePosition = _textLines.GetLinePosition(leadingTrivia.Span.Start);
-
-        // If trivia doesn't start from the first character of the line, then it is not a valid case. The trivia is probably
-        // somewhere between tokens / nodes
-        if (triviaLinePosition.Character > 0)
+        else
         {
-            return (Applicable: false, Stop: false);
-        }
-
-        int triviaLength = leadingTrivia.Span.Length;
-
-        // Incorrect zero-length trivia when indent expected
-        if (triviaLength == 0)
-        {
-            // Actually, all is fine. No indentation is expected
-            if (expectedIndentation.Length == 0)
-            {
-                return (Applicable: true, Stop: false);
-            }
-
-            // If trivia is empty, we can add expected indentation.
-            // In this case the first token of the node is the first character on the line
-            // and should be used as an indentation placement marker
+            // No trivia, but it should be there to indent the node
             stop =
                 HandleChange(
-                    new TextSpan(nodeOrToken.SpanStart, 0),
-                    expectedIndentation
+                    new TextSpan(nodeOrToken.Span.Start, 0),
+                    newLine + expectedIndentation
                 );
-
-            return (Applicable: true, stop);
-        }
-
-        bool triviaContainsComments =
-            leadingTrivia.Any(
-                trivia =>
-                    trivia.IsKind(SyntaxKind.SingleLineCommentTrivia)
-                    || trivia.IsKind(SyntaxKind.MultiLineCommentTrivia)
-            );
-
-        bool triviaContainsEndOfLine =
-            leadingTrivia.Any(trivia => trivia.IsKind(SyntaxKind.EndOfLineTrivia));
-
-        // If trivia already has expected indentation length then return true
-        if (!triviaContainsComments && !triviaContainsEndOfLine && triviaLength == expectedIndentation.Length)
-        {
-            return (Applicable: true, Stop: false);
-        }
-
-        // If trivia is shorter or longer than the expected indentation, then we can set it to required indentation.
-        // But if it contains comments or new lines, then we have to separate trivia from the code and indent both of them
-        if (triviaContainsComments)
-        {
-            string commentIndentation = expectedIndentation;
-
-            if (nodeOrToken.IsToken
-                && nodeOrToken.Parent is BlockSyntax block
-                && block.CloseBraceToken == nodeOrToken.AsToken()
-            )
+            if (stop)
             {
-                // This is a special case.
-                // As trivia is bound to the beginning of tokens and nodes, the end trivia inside a block is bound to the closing bracket.
-                // Comment in this case should have indentation of not a bracket but of the content, so to have +1 indentation
-                commentIndentation += _singleIndentation;
+                return (Applicable: true, Stop: true);
             }
+        }
 
-            // The structure of trivial with comment should be:
-            // <?end of line trivia><indentation><comment trivia><end of line trivia>
-            // <indentation><token>
-            // <?end of line trivia><indentation><multi
-            //      line
-            //      comment
-            //      trivia><end of line trivia>
-            // <indentation><token>
-            // there can be multiple comment trivia or multi-line comment trivia, up to one new line can be in the middle of the multi-line
-
-            // the logic of check:
-            // for each comment or multi-line comment check
-            //      1. The first trivia in front is whitespace trivia of indentation length
-            //      2. For multi-line comment trivia check that the indentation of the content is correct
-
-            // When the check goes through, for each not first comment trivia we need to limit the check to the previous trivia end
-            for (int triviaIndex = 0; triviaIndex < leadingTrivia.Count; triviaIndex++)
+        SyntaxTriviaList trailingTrivia = nodeOrToken.GetTrailingTrivia();
+        if (trailingTrivia.Any())
+        {
+            string commentIndentation = GetTriviaIndentation(nodeOrToken, expectedIndentation);
+            if (CheckTriviaIndentation(commentIndentation, trailingTrivia, newLine))
             {
-                SyntaxTrivia trivia = leadingTrivia[triviaIndex];
-                if (trivia.IsKind(SyntaxKind.SingleLineCommentTrivia)
-                    || trivia.IsKind(SyntaxKind.MultiLineCommentTrivia)
-                )
-                {
-                    if (!CheckWhiteSpaceTriviaInFrontIsCorrect(leadingTrivia, triviaIndex, commentIndentation, out TextChange textChange))
-                    {
-                        stop = HandleChange(textChange);
-                        if (stop)
-                        {
-                            return (Applicable: true, Stop: true);
-                        }
-                    }
-
-                    if (trivia.IsKind(SyntaxKind.MultiLineCommentTrivia))
-                    {
-                        SyntaxTrivia newLine = SyntaxTriviaAnalysis.DetermineEndOfLine(trivia.Token);
-
-                        LinePosition linePosition = _textLines.GetLinePosition(trivia.SpanStart);
-                        SourceText? text = _textLines[linePosition.Line].Text;
-                        if (text is null)
-                        {
-                            // I believe that it shouldn't happen. If happens, then just continue for safety
-                            continue;
-                        }
-
-                        bool hasNotIndentationTriviaInFront = false;
-                        for (int i = linePosition.Character - 1; i >= 0; i++)
-                        {
-                            if (!char.IsWhiteSpace(text[i]) || text[i] != '\t')
-                            {
-                                hasNotIndentationTriviaInFront = true;
-                                break;
-                            }
-                        }
-
-                        // For multi-line comment trivia we need to check that the indentation of the content is correct
-                        // The content of the multi-line comment trivia is the text between the start and end of the trivia
-                        string[] splitContent =
-                            trivia.ToFullString()
-                                .Split(WalkerConstants.SplitChars, StringSplitOptions.RemoveEmptyEntries);
-
-                        int startIndex = 0;
-                        if (hasNotIndentationTriviaInFront)
-                        {
-                            // If there is no trivia in front, then we can start from the first line
-                            startIndex = 1;
-                        }
-
-                        int minimumCommentIndentation = GetMinimumCommentIndentation(splitContent, startIndex);
-
-                        if (minimumCommentIndentation != commentIndentation.Length)
-                        {
-                            // the 0 index is already indented correctly with the code above
-                            for (int i = 1; i < splitContent.Length; i++)
-                            {
-                                string line = splitContent[i];
-                                if (line.Length == 0)
-                                {
-                                    continue;
-                                }
-
-                                int currentIndentationLength = GetIndentationLength(line);
-                                int additionalIndentation = currentIndentationLength - minimumCommentIndentation;
-                                int endSliceLength = line.Length - additionalIndentation;
-                                ReadOnlySpan<char> restOfTheLine = line.AsSpan().Slice(line.Length - endSliceLength, endSliceLength);
-                                splitContent[i] = commentIndentation + restOfTheLine.ToString();
-                            }
-
-                            stop =
-                                HandleChange(
-                                    trivia.Span,
-                                    string.Join(newLine.ToString(), splitContent)
-                                );
-                            if (stop)
-                            {
-                                return (Applicable: true, Stop: true);
-                            }
-                        }
-
-                        if (!CheckEndOfLineAfterExists(leadingTrivia, triviaIndex, newLine, expectedIndentation, out textChange))
-                        {
-                            stop = HandleChange(textChange);
-                            if (stop)
-                            {
-                                return (Applicable: true, Stop: true);
-                            }
-                        }
-                    }
-                }
+                return (Applicable: true, Stop: true);
             }
         }
 
         return (Applicable: true, Stop: false);
     }
 
+    /// <summary>
+    /// Returns if processing should be stopped
+    /// </summary>
+    private bool CheckTriviaIndentation(
+        string expectedIndentation,
+        SyntaxTriviaList leadingTrivia,
+        SyntaxTrivia newLine)
+    {
+        // The structure of trivial with comment might be one of or combination of:
+        // <?end of line trivia><indentation><comment trivia><end of line trivia>
+        // <indentation><token>
+        // <?end of line trivia><indentation><multi
+        //      line
+        //      comment
+        //      trivia><end of line trivia>
+        // <indentation><token>
+
+        // the logic of check:
+        // for each comment or multi-line comment check
+        //      1. The first trivia in front is whitespace trivia of indentation length
+        //      2. For multi-line comment trivia check that the indentation of the content is correct
+
+        bool stop;
+
+        // When the check goes through, for each not first comment trivia we need to limit the check to the previous trivia end
+        for (int triviaIndex = 0; triviaIndex < leadingTrivia.Count; triviaIndex++)
+        {
+            SyntaxTrivia trivia = leadingTrivia[triviaIndex];
+            if (trivia.IsKind(SyntaxKind.SingleLineCommentTrivia)
+                || trivia.IsKind(SyntaxKind.MultiLineCommentTrivia)
+            )
+            {
+                bool triviaInFrontIsValid =
+                    CheckWhiteSpaceTriviaInFrontMultilineComment(
+                        leadingTrivia,
+                        triviaIndex,
+                        expectedIndentation,
+                        newLine,
+                        out TextChange textChange
+                    );
+
+                if (!triviaInFrontIsValid)
+                {
+                    stop = HandleChange(textChange);
+                    if (stop)
+                    {
+                        return true;
+                    }
+                }
+
+                if (trivia.IsKind(SyntaxKind.MultiLineCommentTrivia))
+                {
+                    // For multi-line comment trivia we need to check that the indentation of the content is correct
+                    // The content of the multi-line comment trivia is the text between the start and end of the trivia
+                    string[] splitContent =
+                        trivia.ToFullString()
+                            .Split(SplitChars, StringSplitOptions.RemoveEmptyEntries);
+
+                    // The trivia on index 0 is already corrected above. Whatever is there is not relevant
+                    int minimumCommentIndentation = GetMinimumCommentIndentation(splitContent, startIndex: 1);
+
+                    if (minimumCommentIndentation != expectedIndentation.Length)
+                    {
+                        for (int i = 1; i < splitContent.Length; i++)
+                        {
+                            string line = splitContent[i];
+                            if (line.Length == 0)
+                            {
+                                continue;
+                            }
+
+                            int currentIndentationLength = GetIndentationLength(line);
+                            int additionalIndentation = currentIndentationLength - minimumCommentIndentation;
+                            int endSliceLength = line.Length - additionalIndentation;
+                            ReadOnlySpan<char> restOfTheLine = line.AsSpan().Slice(line.Length - endSliceLength, endSliceLength);
+                            splitContent[i] = expectedIndentation + restOfTheLine.ToString();
+                        }
+
+                        stop =
+                            HandleChange(
+                                trivia.Span,
+                                string.Join(newLine.ToString(), splitContent)
+                            );
+                        if (stop)
+                        {
+                            return true;
+                        }
+                    }
+
+                    // if (!CheckEndOfLineAfterExists(leadingTrivia, triviaIndex, newLine, expectedIndentation, out textChange))
+                    // {
+                    //     stop = HandleChange(textChange);
+                    //     if (stop)
+                    //     {
+                    //         return true;
+                    //     }
+                    // }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private string GetTriviaIndentation(SyntaxNodeOrToken nodeOrToken, string expectedIndentation)
+    {
+        string commentIndentation = expectedIndentation;
+
+        if (nodeOrToken.IsToken)
+        {
+            // There are special cases.
+            // As trivia is bound to the beginning of tokens and nodes, the end trivia inside a block or argument list
+            // or similar is bound to the closing bracket or paren.
+            // Comment in this case should have indentation of not a bracket but of the content, so to have +1 indentation
+            SyntaxToken syntaxToken = nodeOrToken.AsToken();
+            if (nodeOrToken.Parent is BlockSyntax block)
+            {
+                if (block.OpenBraceToken == syntaxToken
+                    || block.CloseBraceToken == syntaxToken
+                )
+                {
+                    commentIndentation += _singleIndentation;
+                }
+            }
+
+            if (nodeOrToken.Parent is ArgumentListSyntax argumentListSyntax
+                && argumentListSyntax.CloseParenToken == syntaxToken
+            )
+            {
+                commentIndentation += _singleIndentation;
+            }
+        }
+
+        return commentIndentation;
+    }
+
     private bool CheckNothingButTriviaInFront(SyntaxNodeOrToken nodeOrToken)
     {
+        LinePosition nodeLinePosition = _textLines.GetLinePosition(nodeOrToken.SpanStart);
+        if (nodeLinePosition.Character == 0)
+        {
+            return true;
+        }
+
+        bool nothingButWhitespacesInFront = CheckNothingButWhitespacesInFront(nodeOrToken.SpanStart);
+        if (nothingButWhitespacesInFront)
+        {
+            return true;
+        }
+
+        if (CheckNothingButMultilineCommentFromParentTrailingTrivia(nodeOrToken, out _))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool CheckNothingButWhitespacesInFront(int spanStart)
+    {
+        TextLine lineText = _textLines.GetLineFromPosition(spanStart);
+
+        SourceText? sourceText = lineText.Text;
+        if (sourceText == null)
+        {
+            // I believe that it shouldn't happen. But just for safety
+            return true;
+        }
+
+        int charIndex = spanStart - 1;
+        while (charIndex >= lineText.Start)
+        {
+            char c = sourceText[charIndex];
+
+            if (!char.IsWhiteSpace(c) && c != '\t')
+            {
+                return false;
+            }
+
+            --charIndex;
+        }
+
+        return true;
+    }
+
+    private bool CheckNothingButMultilineCommentFromParentTrailingTrivia(
+        SyntaxNodeOrToken nodeOrToken,
+        out SyntaxTrivia parentTrivia
+    )
+    {
+        parentTrivia = default;
+
         LinePosition nodeLinePosition = _textLines.GetLinePosition(nodeOrToken.SpanStart);
 
         SyntaxNode? parent = nodeOrToken.Parent;
@@ -380,10 +541,29 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
                 return false;
             }
 
+            if (linePosition.Line < nodeLinePosition.Line)
+            {
+                break;
+            }
+
             parent = parent.Parent;
         }
 
-        return true;
+        TextSpan span = new(nodeOrToken.SpanStart - nodeLinePosition.Character, nodeLinePosition.Character);
+        IEnumerable<SyntaxTrivia> descendantTrivia = _syntaxTree.GetRoot().DescendantTrivia(span);
+
+        parentTrivia =
+            descendantTrivia.FirstOrDefault(
+                trivia =>
+                {
+                    LinePosition linePositionStart = _textLines.GetLinePosition(trivia.SpanStart);
+                    LinePosition linePositionEnd = _textLines.GetLinePosition(trivia.Span.End);
+                    return linePositionStart.Line != nodeLinePosition.Line
+                        && linePositionEnd.Line == nodeLinePosition.Line;
+                }
+            );
+
+        return parentTrivia != default;
     }
 
     private static bool CheckEndOfLineAfterExists(
@@ -469,10 +649,11 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
         return currentIndentationLength;
     }
 
-    private static bool CheckWhiteSpaceTriviaInFrontIsCorrect(
+    private bool CheckWhiteSpaceTriviaInFrontMultilineComment(
         SyntaxTriviaList leadingTrivia,
         int triviaIndex,
         string expectedIndentation,
+        SyntaxTrivia newLine,
         out TextChange textChange
     )
     {
@@ -481,10 +662,14 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
         int previousTriviaIndex = triviaIndex - 1;
         if (previousTriviaIndex < 0)
         {
+            bool nothingButWhitespaceTriviaInFront = CheckNothingButWhitespacesInFront(leadingTrivia.Span.Start);
+
             textChange =
                 new TextChange(
                     new TextSpan(leadingTrivia.Span.Start, 0),
-                    expectedIndentation
+                    nothingButWhitespaceTriviaInFront
+                        ? expectedIndentation
+                        : newLine + expectedIndentation
                 );
             return false;
         }
@@ -495,18 +680,16 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
             textChange =
                 new TextChange(
                     new TextSpan(leadingTrivia.Span.Start, 0),
-                    expectedIndentation
+                    previousTrivia.IsKind(SyntaxKind.EndOfLineTrivia)
+                        ? expectedIndentation
+                        : newLine + expectedIndentation
                 );
             return false;
         }
 
         if (previousTrivia.Span.Length != expectedIndentation.Length)
         {
-            textChange =
-                new TextChange(
-                    previousTrivia.Span,
-                    expectedIndentation
-                );
+            textChange = new TextChange(previousTrivia.Span, expectedIndentation);
             return false;
         }
 
@@ -530,12 +713,17 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
     /// </summary>
     private bool HandleChange(TextChange textChange)
     {
+        if (RequiredChanges.Any(c => c.Span == textChange.Span))
+        {
+            // Because algo is kind of recursive and the special case with parent trailing trivia is checked,
+            // it might happen that when we process nodes, some trivial is processed twice, which produces duplicate changes.
+            // I assume that only this part of logic produces duplicates, so it is safe to just check for them.
+            // If the assumption is not correct, then there will be problems in tests or in formatting,
+            // which should be addressed later.
+            return false;
+        }
+
         RequiredChanges.Add(textChange);
         return _handler(this, textChange);
     }
-}
-
-file static class WalkerConstants
-{
-    public static readonly char[] SplitChars = ['\r', '\n'];
 }

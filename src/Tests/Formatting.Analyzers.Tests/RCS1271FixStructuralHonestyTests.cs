@@ -21,16 +21,16 @@ public class RCS1271FixStructuralHonestyTests :
             using System;
             using System.Threading.Tasks;
 
-            int result =/*comment1
-                comment2
-            comment3*/ [|await MyMethodAsync(/*comment4
-            comment5*/[|async (int a, int b, int c) =>
-            /*comment6
-            comment7*/{
-                return await Task.Run(() => 10);
-            /*comment8
-            comment9*/}/*comment10
-            comment11*/|])|];
+            int result = 
+            [|await MyMethodAsync(
+                // Comment
+                async (int a, int b, int c) =>
+                {
+                    // Comment
+                    return await Task.Run(() => 10);
+                    // Comment
+                }
+            )|];
 
             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
                 => Task.FromResult(1);
@@ -75,18 +75,18 @@ public class RCS1271FixStructuralHonestyTests :
             // One line comments
             
             int result = 
-            await MyMethodAsync(
-            // Comment
+            [|await MyMethodAsync(
+            [|// Comment
                 async (int a, int b, int c) =>
                 {
                 // Comment
                     return await Task.Run(() => 10);
                         // Comment
-                }
-            );
+                }|]
+            )|];
             
             result = 
-            await MyMethodAsync(
+            [|await MyMethodAsync(
                 // Comment
                 async (int a, int b, int c) =>
                 {
@@ -94,35 +94,40 @@ public class RCS1271FixStructuralHonestyTests :
                     return await Task.Run(() => 10);
                     // Comment
                 }
-            );
+            )|];
             
             result = 
-            await MyMethodAsync(// Comment
-                async (int a, int b, int c) =>
+            [|await MyMethodAsync(// Comment
+                [|async (int a, int b, int c) =>
                 {
                     // Comment
                     return await Task.Run(() => 10);
                     // Comment
-                }
-            );
+                }|]
+            )|];
             
-            int result = [|await MyMethodAsync([|/*comment*/async (int a, int b, int c) =>
+            result = [|await MyMethodAsync(/*comment*/[|async (int a, int b, int c) =>
             /*comment*/{
                 return await Task.Run(() => 10);
             /*comment*/}|]/*comment*/)|];
 
             // Multiline
-            result = /*comment
-            comment
-            comment*/ [|await MyMethodAsync([|/*comment
-            comment*/async (int a, int b, int c) =>
-            /*comment
-            comment*/{
-                return await Task.Run(() => 10);
-            /*comment
-            comment*/}|]/*comment
-            comment*/)|];
-                );
+            result =/*comment1
+                comment2
+            comment3*/ [|await MyMethodAsync(/*comment4
+            comment5*/[|async (int a, int b, int c) =>
+            /*comment6
+            comment7*/{/*comment12
+            comment13*/ return await Task.Run(() => 10);
+            /*comment8
+            comment9*/}/*comment10
+            comment11*/|])|];
+            
+            Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
+                => Task.FromResult(1);
+            
+            int MyMethod(Func<int> f) => 1;
+            int MyMethod2(Func<int, int> f) => 1;
             """,
             """
             using System;
@@ -163,7 +168,7 @@ public class RCS1271FixStructuralHonestyTests :
                     }
                 );
             
-            int result = 
+            result = 
                 await MyMethodAsync(
                     /*comment*/
                     async (int a, int b, int c) =>
@@ -176,24 +181,32 @@ public class RCS1271FixStructuralHonestyTests :
                 );
 
             // Multiline
-            result = 
-                /*comment
-                comment
-                comment*/ 
+            result =
+                /*comment1
+                comment2
+                comment3*/ 
                 await MyMethodAsync(
-                    /*comment
-                    comment*/
+                    /*comment4
+                    comment5*/
                     async (int a, int b, int c) =>
-                    /*comment
-                    comment*/
+                    /*comment6
+                    comment7*/
                     {
+                        /*comment12
+                        comment13*/
                         return await Task.Run(() => 10);
-                        /*comment
-                        comment*/
+                        /*comment8
+                        comment9*/
                     }
-                    /*comment
-                    comment*/
+                    /*comment10
+                    comment11*/
                 );
+            
+            Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
+                => Task.FromResult(1);
+            
+            int MyMethod(Func<int> f) => 1;
+            int MyMethod2(Func<int, int> f) => 1;
             """,
             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
