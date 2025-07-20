@@ -118,13 +118,24 @@ public sealed class FixStructuralHonestyAnalyzer : BaseDiagnosticAnalyzer
         IndentationAnalysis indentationAnalysis =
             SyntaxTriviaAnalysis.AnalyzeIndentation(parent, configOptions, cancellationToken);
 
+        bool rootExpression =
+            node.Parent is GlobalStatementSyntax
+            || (node.Parent is ExpressionStatementSyntax expression && expression.Parent is GlobalStatementSyntax);
+
+        string expectedIndentation =
+            rootExpression
+                ? string.Empty
+                : indentationAnalysis.GetIncreasedIndentation();
+
+        string singleIndentation = indentationAnalysis.GetSingleIndentation();
+
         bool issueFound = false;
 
         IndentationAnalyzingWalker walker =
             new(
                 node.SyntaxTree,
-                indentationAnalysis.GetIncreasedIndentation(),
-                indentationAnalysis.GetSingleIndentation(),
+                expectedIndentation,
+                singleIndentation,
                 textLines,
                 (_, _) => issueFound = true // this also return true to stop the walker after the first issue
             );

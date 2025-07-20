@@ -65,7 +65,10 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
 
         string expectedIndentation;
 
-        if (!node.IsMultiLine())
+        // If there is trivia in front of then indentation correction might be required
+        bool nothingButTriviaInFront = CheckNothingButTriviaInFront(node);
+
+        if (!node.IsMultiLine() && nothingButTriviaInFront)
         {
             expectedIndentation = GetExpectedIndentation(node);
             CheckIndentation(node, expectedIndentation);
@@ -73,10 +76,7 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
             return;
         }
 
-        if (!CheckApplicableForIndentation(node)
-            // If there is trivia in front of then indentation correction might be required
-            && !CheckNothingButTriviaInFront(node)
-        )
+        if (!CheckApplicableForIndentation(node) && !nothingButTriviaInFront)
         {
             base.Visit(node);
             return;
@@ -176,15 +176,15 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
                 break;
         }
 
-        // if (CheckNothingButWhitespacesInFront(token.SpanStart))
-        // {
-        //     string expectedIndentation = GetExpectedIndentation(token);
-        //     (bool applicable, bool stop) = CheckIndentation(token, expectedIndentation);
-        //     if (applicable && stop)
-        //     {
-        //         return;
-        //     }
-        // }
+        if (CheckNothingButTriviaInFront(token))
+        {
+            string expectedIndentation = GetExpectedIndentation(token);
+            (bool applicable, bool stop) = CheckIndentation(token, expectedIndentation);
+            if (applicable && stop)
+            {
+                return;
+            }
+        }
 
         base.VisitToken(token);
     }
@@ -245,7 +245,15 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
             // It might the case when there is a multi-line comment bound as a trailing trivia to the previous node
             if (!CheckNothingButMultilineCommentFromParentTrailingTrivia(nodeOrToken, out SyntaxTrivia trivia))
             {
-                if (nodeOrToken.IsNode && nodeOrToken.AsNode()!.IsMultiLine() && CheckApplicableForIndentation(nodeOrToken))
+                if ((nodeOrToken.IsNode && nodeOrToken.AsNode()!.IsMultiLine() && CheckApplicableForIndentation(nodeOrToken))
+                    || (nodeOrToken.IsToken
+                        && nodeOrToken.Kind()
+                            is SyntaxKind.CloseParenToken
+                            or SyntaxKind.CloseBraceToken
+                            or SyntaxKind.CloseBracketToken
+                        && !CheckNothingButWhitespacesInFront(nodeOrToken.SpanStart)
+                    )
+                )
                 {
                     stop =
                         HandleChange(
@@ -505,6 +513,11 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
             return true;
         }
 
+        if (CheckParentOnTheSameLine(nodeOrToken))
+        {
+            return false;
+        }
+
         bool nothingButWhitespacesInFront = CheckNothingButWhitespacesInFront(nodeOrToken.SpanStart);
         if (nothingButWhitespacesInFront)
         {
@@ -553,32 +566,12 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
     {
         parentTrivia = default;
 
-        LinePosition nodeLinePosition = _textLines.GetLinePosition(nodeOrToken.SpanStart);
-
-        SyntaxNode? parent = nodeOrToken.Parent;
-        while (parent is not null)
+        if (CheckParentOnTheSameLine(nodeOrToken))
         {
-            if (parent is ArgumentSyntax)
-            {
-                // Argument syntax is kind of a virtual wrapper over the real argument.
-                // Only the real argument should be checked for indentation.
-                parent = parent.Parent;
-                continue;
-            }
-
-            LinePosition linePosition = _textLines.GetLinePosition(parent.SpanStart);
-            if (linePosition.Line == nodeLinePosition.Line)
-            {
-                return false;
-            }
-
-            if (linePosition.Line < nodeLinePosition.Line)
-            {
-                break;
-            }
-
-            parent = parent.Parent;
+            return false;
         }
+
+        LinePosition nodeLinePosition = _textLines.GetLinePosition(nodeOrToken.SpanStart);
 
         TextSpan span = new(nodeOrToken.SpanStart - nodeLinePosition.Character, nodeLinePosition.Character);
         IEnumerable<SyntaxTrivia> descendantTrivia = _syntaxTree.GetRoot().DescendantTrivia(span);
@@ -595,6 +588,38 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
             );
 
         return parentTrivia != default;
+    }
+
+    private bool CheckParentOnTheSameLine(SyntaxNodeOrToken nodeOrToken)
+    {
+        LinePosition nodeLinePosition = _textLines.GetLinePosition(nodeOrToken.SpanStart);
+
+        SyntaxNode? parent = nodeOrToken.Parent;
+        while (parent is not null)
+        {
+            if (parent is ArgumentSyntax)
+            {
+                // Argument syntax is kind of a virtual wrapper over the real argument.
+                // Only the real argument should be checked for indentation.
+                parent = parent.Parent;
+                continue;
+            }
+
+            LinePosition linePosition = _textLines.GetLinePosition(parent.SpanStart);
+            if (linePosition.Line == nodeLinePosition.Line)
+            {
+                return true;
+            }
+
+            if (linePosition.Line < nodeLinePosition.Line)
+            {
+                break;
+            }
+
+            parent = parent.Parent;
+        }
+
+        return false;
     }
 
     private static bool CheckEndOfLineAfterExists(

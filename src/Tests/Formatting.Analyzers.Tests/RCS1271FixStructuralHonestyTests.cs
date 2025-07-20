@@ -21,42 +21,31 @@ public class RCS1271FixStructuralHonestyTests :
             using System;
             using System.Threading.Tasks;
 
-            int result = 
-            [|await MyMethodAsync(
-                // Comment
-                async (int a, int b, int c) =>
-                {
-                    // Comment
-                    return await Task.Run(() => 10);
-                    // Comment
-                }
-            )|];
+            int result3 = [|MyMethod([|(int a, int b, int c) 
+            => 10|])|];
 
             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
                 => Task.FromResult(1);
 
-            int MyMethod(Func<int> f) => 1;
+            //int MyMethod(Func<int> f) => 1;
+            int MyMethod(Func<int, int, int, int> f) => 1;
             int MyMethod2(Func<int, int> f) => 1;
             """,
             """
             using System;
             using System.Threading.Tasks;
 
-            int result = 
-                await MyMethodAsync(
-                    // Comment
-                    async (int a, int b, int c) =>
-                    {
-                        // Comment
-                        return await Task.Run(() => 10);
-                        // Comment
-                    }
+            int result3 = 
+                MyMethod(
+                    (int a, int b, int c) 
+                        => 10
                 );
 
             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
                 => Task.FromResult(1);
 
-            int MyMethod(Func<int> f) => 1;
+            //int MyMethod(Func<int> f) => 1;
+            int MyMethod(Func<int, int, int, int> f) => 1;
             int MyMethod2(Func<int, int> f) => 1;
             """,
             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
@@ -336,7 +325,7 @@ public class RCS1271FixStructuralHonestyTests :
                     1, 2)|];
 
             Task<int> MyMethodAsync(int a, int b) => Task.FromResult(1);
-            int MyMethod(Func<int> f) => 1;
+            int MyMethod(int a, int b) => 1;
             """,
             """
             using System;
@@ -369,7 +358,7 @@ public class RCS1271FixStructuralHonestyTests :
                 );
 
             Task<int> MyMethodAsync(int a, int b) => Task.FromResult(1);
-            int MyMethod(Func<int> f) => 1;
+            int MyMethod(int a, int b) => 1;
             """,
             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
@@ -380,6 +369,8 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
+            using System;
+            
             int result = [|MyMethod([|(int a, int b, int c) =>
             {
                 return 10;
@@ -392,6 +383,8 @@ public class RCS1271FixStructuralHonestyTests :
             int MyMethod(Func<int, int, int, int> f) => 1;
             """,
             """
+            using System;
+            
             int result = 
                 MyMethod(
                     (int a, int b, int c) =>
@@ -411,7 +404,8 @@ public class RCS1271FixStructuralHonestyTests :
                 );
 
             int MyMethod(Func<int, int, int, int> f) => 1;
-            """
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -420,15 +414,23 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
+            using System;
+            using System.Threading.Tasks;
+            
             [|await C.Instance.MyMethodAsync([|async (int a, int b, int c) =>
             {
-                return;
+                    await Task.Delay(100);
+                return 10;
             }|])|];
             """,
             """
+            using System;
+            using System.Threading.Tasks;
+            
             await C.Instance.MyMethodAsync(
                 async (int a, int b, int c) =>
                 {
+                    await Task.Delay(100);
                     return 10;
                 }
             );
@@ -439,15 +441,19 @@ public class RCS1271FixStructuralHonestyTests :
                     (
                         source:
                             """
+                            using System;
+                            using System.Threading.Tasks;
+                            
                             public class C {
                                 public static C Instance { get; } = new C();
 
-                                public static Task<bool> MyMethodAsync(Func<int, int, int, Task<int>> f) => Task.FromResult(true);
+                                public Task<bool> MyMethodAsync(Func<int, int, int, Task<int>> f) => Task.FromResult(true);
                             }
                             """,
                         expectedSource: null
                     )
-                }
+                },
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 

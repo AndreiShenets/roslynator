@@ -100,13 +100,21 @@ public sealed class FixStructuralHonestyFixProvider : BaseCodeFixProvider
         SourceText sourceText = await node.SyntaxTree.GetTextAsync(cancellationToken);
         TextLineCollection textLines = sourceText.Lines;
 
-        string increasedIndentation = indentationAnalysis.GetIncreasedIndentation();
+        bool rootExpression =
+            node.Parent is GlobalStatementSyntax
+                || (node.Parent is ExpressionStatementSyntax expression && expression.Parent is GlobalStatementSyntax);
+
+        string expectedIndentation =
+            rootExpression
+                ? string.Empty
+                : indentationAnalysis.GetIncreasedIndentation();
+
         string singleIndentation = indentationAnalysis.GetSingleIndentation();
 
         IndentationAnalyzingWalker walker =
             new(
                 node.SyntaxTree,
-                increasedIndentation,
+                expectedIndentation,
                 singleIndentation,
                 textLines,
                 static (walker, textChange) =>
