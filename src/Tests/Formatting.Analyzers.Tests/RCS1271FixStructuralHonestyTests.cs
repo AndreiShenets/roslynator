@@ -23,13 +23,13 @@ public class RCS1271FixStructuralHonestyTests :
 
             int result = 
             [|await MyMethodAsync(
-                [|// Comment
+                // Comment
                 async (int a, int b, int c) =>
                 {
                     // Comment
                     return await Task.Run(() => 10);
                     // Comment
-                }|]
+                }
             )|];
 
             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
@@ -42,7 +42,7 @@ public class RCS1271FixStructuralHonestyTests :
             using System;
             using System.Threading.Tasks;
 
-            int result =
+            int result = 
                 await MyMethodAsync(
                     // Comment
                     async (int a, int b, int c) =>
@@ -95,21 +95,32 @@ public class RCS1271FixStructuralHonestyTests :
                     // Comment
                 }
             )|];
+
+            result = 
+                    [|await MyMethodAsync(
+                        // Comment
+                        async (int a, int b, int c) =>
+                        {
+                            // Comment
+                            return await Task.Run(() => 10);
+                            // Comment
+                        }
+                    )|];
             
             result = 
             [|await MyMethodAsync(// Comment
-                [|async (int a, int b, int c) =>
+                async (int a, int b, int c) =>
                 {
                     // Comment
                     return await Task.Run(() => 10);
                     // Comment
-                }|]
+                }
             )|];
             
             result = [|await MyMethodAsync(/*comment*/[|async (int a, int b, int c) =>
             /*comment*/{
                 return await Task.Run(() => 10);
-            /*comment*/}|]/*comment*/)|];
+            /*comment*/}/*comment*/|])|];
 
             // Multiline
             result =/*comment1
@@ -159,6 +170,17 @@ public class RCS1271FixStructuralHonestyTests :
                 );
             
             result = 
+                await MyMethodAsync(
+                    // Comment
+                    async (int a, int b, int c) =>
+                    {
+                        // Comment
+                        return await Task.Run(() => 10);
+                        // Comment
+                    }
+                );
+            
+            result = 
                 await MyMethodAsync(// Comment
                     async (int a, int b, int c) =>
                     {
@@ -169,8 +191,7 @@ public class RCS1271FixStructuralHonestyTests :
                 );
             
             result = 
-                await MyMethodAsync(
-                    /*comment*/
+                await MyMethodAsync(/*comment*/
                     async (int a, int b, int c) =>
                     /*comment*/
                     {
@@ -193,7 +214,7 @@ public class RCS1271FixStructuralHonestyTests :
                     comment7*/
                     {
                         /*comment12
-                        comment13*/
+                        comment13*/ 
                         return await Task.Run(() => 10);
                         /*comment8
                         comment9*/

@@ -289,7 +289,7 @@ public abstract class CodeVerifier
         int actualCharacter = actual.Character;
 
         if (expectedCharacter != actualCharacter)
-            return $" expected to {startOrEnd} at column {expectedCharacter + 1}, actual: {actualCharacter + 1}";
+            return $" expected to {startOrEnd} on line {expectedLine + 1} at column {expectedCharacter + 1}, actual: on {actualLine + 1} at {actualCharacter + 1}";
 
         return null;
     }

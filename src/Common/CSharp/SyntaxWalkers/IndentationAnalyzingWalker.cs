@@ -176,15 +176,15 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
                 break;
         }
 
-        if (CheckNothingButWhitespacesInFront(token.SpanStart))
-        {
-            string expectedIndentation = GetExpectedIndentation(token);
-            (bool applicable, bool stop) = CheckIndentation(token, expectedIndentation);
-            if (applicable && stop)
-            {
-                return;
-            }
-        }
+        // if (CheckNothingButWhitespacesInFront(token.SpanStart))
+        // {
+        //     string expectedIndentation = GetExpectedIndentation(token);
+        //     (bool applicable, bool stop) = CheckIndentation(token, expectedIndentation);
+        //     if (applicable && stop)
+        //     {
+        //         return;
+        //     }
+        // }
 
         base.VisitToken(token);
     }
@@ -245,11 +245,24 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
             // It might the case when there is a multi-line comment bound as a trailing trivia to the previous node
             if (!CheckNothingButMultilineCommentFromParentTrailingTrivia(nodeOrToken, out SyntaxTrivia trivia))
             {
+                if (nodeOrToken.IsNode && nodeOrToken.AsNode()!.IsMultiLine() && CheckApplicableForIndentation(nodeOrToken))
+                {
+                    stop =
+                        HandleChange(
+                            new TextSpan(nodeOrToken.SpanStart, 0),
+                            newLine + expectedIndentation
+                        );
+                    if (stop)
+                    {
+                        return (Applicable: true, Stop: true);
+                    }
+                }
+
                 return (Applicable: false, Stop: false);
             }
 
             // This trivia should be formatted as leading trivia for the current node
-            string commentIndentation = GetTriviaIndentation(nodeOrToken, expectedIndentation);
+            string commentIndentation = GetTriviaIndentation(nodeOrToken, expectedIndentation, TriviaType.Leading);
             if (CheckTriviaIndentation(commentIndentation, trivia.GetContainingList(), newLine))
             {
                 return (Applicable: true, Stop: true);
@@ -267,7 +280,7 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
 
         if (leadingTriviaExists)
         {
-            string commentIndentation = GetTriviaIndentation(nodeOrToken, expectedIndentation);
+            string commentIndentation = GetTriviaIndentation(nodeOrToken, expectedIndentation, TriviaType.Leading);
             if (CheckTriviaIndentation(commentIndentation, leadingTrivia, newLine))
             {
                 return (Applicable: true, Stop: true);
@@ -309,7 +322,9 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
             stop =
                 HandleChange(
                     new TextSpan(nodeOrToken.Span.Start, 0),
-                    newLine + expectedIndentation
+                    nodeLinePosition.Character == 0
+                        ? expectedIndentation
+                        : newLine + expectedIndentation
                 );
             if (stop)
             {
@@ -320,7 +335,7 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
         SyntaxTriviaList trailingTrivia = nodeOrToken.GetTrailingTrivia();
         if (trailingTrivia.Any())
         {
-            string commentIndentation = GetTriviaIndentation(nodeOrToken, expectedIndentation);
+            string commentIndentation = GetTriviaIndentation(nodeOrToken, expectedIndentation, TriviaType.Trailing);
             if (CheckTriviaIndentation(commentIndentation, trailingTrivia, newLine))
             {
                 return (Applicable: true, Stop: true);
@@ -388,45 +403,48 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
                         trivia.ToFullString()
                             .Split(SplitChars, StringSplitOptions.RemoveEmptyEntries);
 
-                    // The trivia on index 0 is already corrected above. Whatever is there is not relevant
-                    int minimumCommentIndentation = GetMinimumCommentIndentation(splitContent, startIndex: 1);
-
-                    if (minimumCommentIndentation != expectedIndentation.Length)
+                    if (splitContent.Length > 1)
                     {
-                        for (int i = 1; i < splitContent.Length; i++)
+                        // The trivia on index 0 is already corrected above. Whatever is there is not relevant
+                        int minimumCommentIndentation = GetMinimumCommentIndentation(splitContent, startIndex: 1);
+
+                        if (minimumCommentIndentation != expectedIndentation.Length)
                         {
-                            string line = splitContent[i];
-                            if (line.Length == 0)
+                            for (int i = 1; i < splitContent.Length; i++)
                             {
-                                continue;
+                                string line = splitContent[i];
+                                if (line.Length == 0)
+                                {
+                                    continue;
+                                }
+
+                                int currentIndentationLength = GetIndentationLength(line);
+                                int additionalIndentation = currentIndentationLength - minimumCommentIndentation;
+                                int endSliceLength = line.Length - additionalIndentation;
+                                ReadOnlySpan<char> restOfTheLine = line.AsSpan().Slice(line.Length - endSliceLength, endSliceLength);
+                                splitContent[i] = expectedIndentation + restOfTheLine.ToString();
                             }
 
-                            int currentIndentationLength = GetIndentationLength(line);
-                            int additionalIndentation = currentIndentationLength - minimumCommentIndentation;
-                            int endSliceLength = line.Length - additionalIndentation;
-                            ReadOnlySpan<char> restOfTheLine = line.AsSpan().Slice(line.Length - endSliceLength, endSliceLength);
-                            splitContent[i] = expectedIndentation + restOfTheLine.ToString();
+                            stop =
+                                HandleChange(
+                                    trivia.Span,
+                                    string.Join(newLine.ToString(), splitContent)
+                                );
+                            if (stop)
+                            {
+                                return true;
+                            }
                         }
 
-                        stop =
-                            HandleChange(
-                                trivia.Span,
-                                string.Join(newLine.ToString(), splitContent)
-                            );
-                        if (stop)
-                        {
-                            return true;
-                        }
+                        // if (!CheckEndOfLineAfterExists(leadingTrivia, triviaIndex, newLine, expectedIndentation, out textChange))
+                        // {
+                        //     stop = HandleChange(textChange);
+                        //     if (stop)
+                        //     {
+                        //         return true;
+                        //     }
+                        // }
                     }
-
-                    // if (!CheckEndOfLineAfterExists(leadingTrivia, triviaIndex, newLine, expectedIndentation, out textChange))
-                    // {
-                    //     stop = HandleChange(textChange);
-                    //     if (stop)
-                    //     {
-                    //         return true;
-                    //     }
-                    // }
                 }
             }
         }
@@ -434,7 +452,13 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
         return false;
     }
 
-    private string GetTriviaIndentation(SyntaxNodeOrToken nodeOrToken, string expectedIndentation)
+    private enum TriviaType
+    {
+        Leading,
+        Trailing
+    }
+
+    private string GetTriviaIndentation(SyntaxNodeOrToken nodeOrToken, string expectedIndentation, TriviaType triviaType)
     {
         string commentIndentation = expectedIndentation;
 
@@ -447,19 +471,26 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
             SyntaxToken syntaxToken = nodeOrToken.AsToken();
             if (nodeOrToken.Parent is BlockSyntax block)
             {
-                if (block.OpenBraceToken == syntaxToken
-                    || block.CloseBraceToken == syntaxToken
-                )
+                if (triviaType == TriviaType.Leading && block.CloseBraceToken == syntaxToken)
+                {
+                    commentIndentation += _singleIndentation;
+                }
+                if (triviaType == TriviaType.Trailing && block.OpenBraceToken == syntaxToken)
                 {
                     commentIndentation += _singleIndentation;
                 }
             }
 
-            if (nodeOrToken.Parent is ArgumentListSyntax argumentListSyntax
-                && argumentListSyntax.CloseParenToken == syntaxToken
-            )
+            if (nodeOrToken.Parent is ArgumentListSyntax argumentListSyntax)
             {
-                commentIndentation += _singleIndentation;
+                if (triviaType == TriviaType.Leading && argumentListSyntax.CloseParenToken == syntaxToken)
+                {
+                    commentIndentation += _singleIndentation;
+                }
+                if (triviaType == TriviaType.Trailing && argumentListSyntax.OpenParenToken == syntaxToken)
+                {
+                    commentIndentation += _singleIndentation;
+                }
             }
         }
 
