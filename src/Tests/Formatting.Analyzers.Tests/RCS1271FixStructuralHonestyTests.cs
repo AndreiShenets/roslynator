@@ -462,6 +462,8 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
+            using System;
+
             Action<int, int, int> myAction = [|(int a, int b, int c) =>
             {
                 // ...
@@ -471,16 +473,20 @@ public class RCS1271FixStructuralHonestyTests :
             }|];
             """,
             """
+            using System;
+
             Action<int, int, int> myAction = 
                 (int a, int b, int c) =>
                 {
                     // ...
                 };
             Action<int, int, int> myAction2 = 
-                (int a, int b, int c) => {
+                (int a, int b, int c) => 
+                {
                     // ...
                 };
-            """
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -489,10 +495,13 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyNoDiagnosticAsync(
             """
+            using System;
+            
             Action<int, int, int> myAction = (int a, int b, int c) => { /* ... */ };
             Action<int, int, int> myAction2 = 
                 (int a, int b, int c) => { /* ... */ };
-            """
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -501,6 +510,9 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
+            using System;
+            using System.Threading.Tasks;
+            
             int myVariable = [|await MyMethodAsync([|new MyType()
             {
                 Property1 = 1,
@@ -511,6 +523,9 @@ public class RCS1271FixStructuralHonestyTests :
                 => Task.FromResult(1);
             """,
             """
+            using System;
+            using System.Threading.Tasks;
+            
             int myVariable = 
                 await MyMethodAsync(
                     new MyType()
@@ -537,7 +552,8 @@ public class RCS1271FixStructuralHonestyTests :
                         """,
                         expectedSource: null
                     )
-                }
+                },
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 

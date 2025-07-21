@@ -176,6 +176,19 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
                 break;
         }
 
+        if (token.Parent != null && _indentationCache.ContainsKey(token.Parent))
+        {
+            // Token belongs to a node that already has indentation applied
+            LinePosition parentLinePosition = _textLines.GetLinePosition(token.Parent.SpanStart);
+            LinePosition tokenLinePosition = _textLines.GetLinePosition(token.SpanStart);
+            // But only if they are on the same line.
+            if (parentLinePosition.Line == tokenLinePosition.Line)
+            {
+                base.VisitToken(token);
+                return;
+            }
+        }
+
         if (CheckNothingButTriviaInFront(token))
         {
             string expectedIndentation = GetExpectedIndentation(token);
@@ -249,6 +262,7 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
                     || (nodeOrToken.IsToken
                         && nodeOrToken.Kind()
                             is SyntaxKind.CloseParenToken
+                            or SyntaxKind.OpenBraceToken
                             or SyntaxKind.CloseBraceToken
                             or SyntaxKind.CloseBracketToken
                         && !CheckNothingButWhitespacesInFront(nodeOrToken.SpanStart)
@@ -327,16 +341,19 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
         else
         {
             // No trivia, but it should be there to indent the node
-            stop =
-                HandleChange(
-                    new TextSpan(nodeOrToken.Span.Start, 0),
-                    nodeLinePosition.Character == 0
-                        ? expectedIndentation
-                        : newLine + expectedIndentation
-                );
-            if (stop)
+            if (nodeLinePosition.Character != expectedIndentation.Length)
             {
-                return (Applicable: true, Stop: true);
+                stop =
+                    HandleChange(
+                        new TextSpan(nodeOrToken.Span.Start, 0),
+                        nodeLinePosition.Character == 0
+                            ? expectedIndentation
+                            : newLine + expectedIndentation
+                    );
+                if (stop)
+                {
+                    return (Applicable: true, Stop: true);
+                }
             }
         }
 
