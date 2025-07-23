@@ -47,7 +47,8 @@ public sealed class FixStructuralHonestyAnalyzer : BaseDiagnosticAnalyzer
             SyntaxKind.ImplicitArrayCreationExpression,
             SyntaxKind.StackAllocArrayCreationExpression,
             SyntaxKind.ImplicitObjectCreationExpression,
-            SyntaxKind.ImplicitStackAllocArrayCreationExpression
+            SyntaxKind.ImplicitStackAllocArrayCreationExpression,
+            SyntaxKind.WithInitializerExpression
         );
         // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.NewKeyword);
         // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.AnonymousMethodExpression);
@@ -98,6 +99,8 @@ public sealed class FixStructuralHonestyAnalyzer : BaseDiagnosticAnalyzer
                 // Correction of the node as for awaitables the whole awaitable expression should be analyzed
                 InvocationExpressionSyntax invocation when invocation.Parent is AwaitExpressionSyntax
                     => invocation.Parent,
+                InitializerExpressionSyntax initializer when initializer.Parent is WithExpressionSyntax
+                    => initializer.Parent,
                 _ => node
             };
 

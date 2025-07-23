@@ -158,6 +158,11 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
             return true;
         }
 
+        if (syntaxKind is SyntaxKind.WithInitializerExpression or SyntaxKind.WithExpression)
+        {
+            return true;
+        }
+
         return false;
     }
 
@@ -224,13 +229,26 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
             if (_indentationCache.TryGetValue(parent, out string? indentation))
             {
                 // Blocks of different kinds that are part of their parents should have indentation of the parent node
-                if ((nodeOrToken.IsNode && nodeOrToken.AsNode() is BlockSyntax or InitializerExpressionSyntax)
+                // RCS0055: The formatting of the boolean expression is correct and readable
+#pragma warning disable RCS0055
+                if (
+                    (
+                        nodeOrToken.IsNode
+                        && nodeOrToken.AsNode() is SyntaxNode syntaxNode
+                        && (
+                            syntaxNode is BlockSyntax
+                                or InitializerExpressionSyntax
+                                or WithExpressionSyntax
+                            || syntaxNode.Parent is WithExpressionSyntax
+                        )
+                    )
                     || nodeOrToken is { IsToken: true, Parent: InitializerExpressionSyntax }
                 )
                 {
                     expectedIndentation = indentation;
                     break;
                 }
+#pragma warning restore RCS0055
 
                 if (nodeOrToken.IsToken
                     && nodeOrToken.AsToken().Kind()

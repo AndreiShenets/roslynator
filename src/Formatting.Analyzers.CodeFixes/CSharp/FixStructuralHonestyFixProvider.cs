@@ -51,6 +51,8 @@ public sealed class FixStructuralHonestyFixProvider : BaseCodeFixProvider
                         case SyntaxKind.StackAllocArrayCreationExpression:
                         case SyntaxKind.ImplicitObjectCreationExpression:
                         case SyntaxKind.ImplicitStackAllocArrayCreationExpression:
+                        case SyntaxKind.WithInitializerExpression:
+                        case SyntaxKind.WithExpression:
                             return true;
                         default:
                             return false;

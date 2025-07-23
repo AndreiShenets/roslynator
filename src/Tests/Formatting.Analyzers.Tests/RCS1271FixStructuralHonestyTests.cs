@@ -746,11 +746,10 @@ public class RCS1271FixStructuralHonestyTests :
             """,
             """
             var person = 
-                new Person("John", 30) 
-                    with
-                    {
-                        Age = 31
-                    };
+                new Person("John", 30) with
+                {
+                    Age = 31
+                };
             var person2 = 
                 person with
                 {
@@ -775,6 +774,8 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
+            using System;
+            
             var person = [|new Person([|(int v1, int v2) => 
             {
                 return v1 + v2;
@@ -788,6 +789,8 @@ public class RCS1271FixStructuralHonestyTests :
             var person4 = new Person((int v1, int v2) => v1 + v2);
             """,
             """
+            using System;
+            
             var person = 
                 new Person(
                     (int v1, int v2) => 
@@ -797,7 +800,8 @@ public class RCS1271FixStructuralHonestyTests :
                 );
             var person2 = 
                 new Person(
-                    (int v1, int v2) => {
+                    (int v1, int v2) => 
+                    {
                         return v1 + v2;
                     }
                 );
@@ -812,10 +816,16 @@ public class RCS1271FixStructuralHonestyTests :
                 new (string source, string expectedSource)[]
                 {
                     (
-                        source: "public sealed record Person(Func<int, int, int> Action);",
+                        source:
+                            """
+                            using System;
+                
+                            public sealed record Person(Func<int, int, int> Action);
+                            """,
                         expectedSource: null
                     )
-                }
+                },
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -828,7 +838,7 @@ public class RCS1271FixStructuralHonestyTests :
             {
                 Property1 = 1,
                 Property2 = 2,
-                Nested = new MyType { Property1 = 3, Property2 = 4 };
+                Nested = new MyType { Property1 = 3, Property2 = 4, Nested = null }
             }|];
             """,
             """
@@ -837,7 +847,7 @@ public class RCS1271FixStructuralHonestyTests :
                 {
                     Property1 = 1,
                     Property2 = 2,
-                    Nested = new MyType { Property1 = 3, Property2 = 4 };
+                    Nested = new MyType { Property1 = 3, Property2 = 4, Nested = null }
                 };
             """,
             additionalFiles:
@@ -855,7 +865,8 @@ public class RCS1271FixStructuralHonestyTests :
                         """,
                         expectedSource: null
                     )
-                }
+                },
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -873,7 +884,8 @@ public class RCS1271FixStructuralHonestyTests :
                             public required int Property2 { get; init; }
                         }
                         """
-                ]
+                ],
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -882,18 +894,23 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
+            using System;
+            
             Func<int, int> square = [|delegate(int x)
             {
                 return x * x;
             }|];
             """,
             """
+            using System;
+
             Func<int, int> square = 
                 delegate(int x)
                 {
                     return x * x;
                 };
-            """
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
