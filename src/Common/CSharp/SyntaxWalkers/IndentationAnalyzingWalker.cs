@@ -112,6 +112,19 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
     {
         SyntaxKind syntaxKind = nodeOrToken.Kind();
 
+        if (
+            syntaxKind is SyntaxKind.AnonymousObjectCreationExpression
+                or SyntaxKind.ArrayCreationExpression
+                or SyntaxKind.ObjectCreationExpression
+                or SyntaxKind.ImplicitArrayCreationExpression
+                or SyntaxKind.StackAllocArrayCreationExpression
+                or SyntaxKind.ImplicitObjectCreationExpression
+                or SyntaxKind.ImplicitStackAllocArrayCreationExpression
+        )
+        {
+            return true;
+        }
+
         if (syntaxKind is SyntaxKind.ParenthesizedLambdaExpression
                 or SyntaxKind.SimpleLambdaExpression
                 or SyntaxKind.InvocationExpression
@@ -210,8 +223,10 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
         {
             if (_indentationCache.TryGetValue(parent, out string? indentation))
             {
-                // Blocks and argument lists should have indentation of the parent node
-                if (nodeOrToken.IsNode && nodeOrToken.AsNode() is BlockSyntax)
+                // Blocks of different kinds that are part of their parents should have indentation of the parent node
+                if ((nodeOrToken.IsNode && nodeOrToken.AsNode() is BlockSyntax or InitializerExpressionSyntax)
+                    || nodeOrToken is { IsToken: true, Parent: InitializerExpressionSyntax }
+                )
                 {
                     expectedIndentation = indentation;
                     break;
@@ -435,7 +450,8 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
 
                         if (minimumCommentIndentation != expectedIndentation.Length)
                         {
-                            for (int i = 1; i < splitContent.Length; i++)
+                            int splitContentLastIndex = splitContent.Length - 1;
+                            for (int i = 1; i <= splitContentLastIndex; i++)
                             {
                                 string line = splitContent[i];
                                 if (line.Length == 0)
@@ -445,7 +461,7 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
 
                                 int currentIndentationLength = GetIndentationLength(line);
                                 int additionalIndentation = currentIndentationLength - minimumCommentIndentation;
-                                int endSliceLength = line.Length - additionalIndentation;
+                                int endSliceLength = line.Length - minimumCommentIndentation - additionalIndentation;
                                 ReadOnlySpan<char> restOfTheLine = line.AsSpan().Slice(line.Length - endSliceLength, endSliceLength);
                                 splitContent[i] = expectedIndentation + restOfTheLine.ToString();
                             }
@@ -494,27 +510,46 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
             // or similar is bound to the closing bracket or paren.
             // Comment in this case should have indentation of not a bracket but of the content, so to have +1 indentation
             SyntaxToken syntaxToken = nodeOrToken.AsToken();
-            if (nodeOrToken.Parent is BlockSyntax block)
+            switch (nodeOrToken.Parent)
             {
-                if (triviaType == TriviaType.Leading && block.CloseBraceToken == syntaxToken)
+                case BlockSyntax block:
                 {
-                    commentIndentation += _singleIndentation;
-                }
-                if (triviaType == TriviaType.Trailing && block.OpenBraceToken == syntaxToken)
-                {
-                    commentIndentation += _singleIndentation;
-                }
-            }
+                    if (triviaType == TriviaType.Leading && block.CloseBraceToken == syntaxToken)
+                    {
+                        commentIndentation += _singleIndentation;
+                    }
+                    if (triviaType == TriviaType.Trailing && block.OpenBraceToken == syntaxToken)
+                    {
+                        commentIndentation += _singleIndentation;
+                    }
 
-            if (nodeOrToken.Parent is ArgumentListSyntax argumentListSyntax)
-            {
-                if (triviaType == TriviaType.Leading && argumentListSyntax.CloseParenToken == syntaxToken)
-                {
-                    commentIndentation += _singleIndentation;
+                    break;
                 }
-                if (triviaType == TriviaType.Trailing && argumentListSyntax.OpenParenToken == syntaxToken)
+                case InitializerExpressionSyntax initializerExpressionSyntax:
                 {
-                    commentIndentation += _singleIndentation;
+                    if (triviaType == TriviaType.Leading && initializerExpressionSyntax.CloseBraceToken == syntaxToken)
+                    {
+                        commentIndentation += _singleIndentation;
+                    }
+                    if (triviaType == TriviaType.Trailing && initializerExpressionSyntax.OpenBraceToken == syntaxToken)
+                    {
+                        commentIndentation += _singleIndentation;
+                    }
+
+                    break;
+                }
+                case ArgumentListSyntax argumentListSyntax:
+                {
+                    if (triviaType == TriviaType.Leading && argumentListSyntax.CloseParenToken == syntaxToken)
+                    {
+                        commentIndentation += _singleIndentation;
+                    }
+                    if (triviaType == TriviaType.Trailing && argumentListSyntax.OpenParenToken == syntaxToken)
+                    {
+                        commentIndentation += _singleIndentation;
+                    }
+
+                    break;
                 }
             }
         }

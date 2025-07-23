@@ -519,6 +519,18 @@ public class RCS1271FixStructuralHonestyTests :
                 Property2 = 2
             }|])|];
 
+            myVariable = [|await MyMethodAsync(/*
+            Comment1
+            Comment2
+            */[|new MyType()
+            // Comment 3
+            {
+            //Comment 4
+                Property1 = 1,
+                Property2 = 2
+            // Comment 5
+            }/*Comment6*/|])|];
+            
             Task<int> MyMethodAsync(MyType mt)
                 => Task.FromResult(1);
             """,
@@ -534,7 +546,24 @@ public class RCS1271FixStructuralHonestyTests :
                         Property2 = 2
                     }
                 );
-
+            
+            myVariable = 
+                await MyMethodAsync(
+                    /*
+                    Comment1
+                    Comment2
+                    */
+                    new MyType()
+                    // Comment 3
+                    {
+                        //Comment 4
+                        Property1 = 1,
+                        Property2 = 2
+                        // Comment 5
+                    }
+                    /*Comment6*/
+                );
+            
             Task<int> MyMethodAsync(MyType mt)
                 => Task.FromResult(1);
             """,
@@ -562,18 +591,24 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
+            using System;
+            using System.Threading.Tasks;
+            
             int myVariable = [|await MyMethodAsync(
                 new MyType() { Property1 = 1, Property2 = 2 })|];
 
-            async Task<int> MyMethodAsync(MyType mt) => 1;
+            Task<int> MyMethodAsync(MyType mt) => Task.FromResult(1);
             """,
             """
+            using System;
+            using System.Threading.Tasks;
+            
             int myVariable = 
                 await MyMethodAsync(
                     new MyType() { Property1 = 1, Property2 = 2 }
                 );
 
-            async Task<int> MyMethodAsync(MyType mt) => 1;
+            Task<int> MyMethodAsync(MyType mt) => Task.FromResult(1);
             """,
             additionalFiles:
                 new (string source, string expectedSource)[]
@@ -589,7 +624,8 @@ public class RCS1271FixStructuralHonestyTests :
                         """,
                         expectedSource: null
                     )
-                }
+                },
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -598,9 +634,12 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyNoDiagnosticAsync(
             """
+            using System;
+            using System.Threading.Tasks;
+
             int myVariable = await MyMethodAsync(new MyType() { Property1 = 1, Property2 = 2 });
 
-            async Task<int> MyMethodAsync(MyType mt) => 1;
+            Task<int> MyMethodAsync(MyType mt) => Task.FromResult(1);
             """,
             additionalFiles:
                 [
@@ -611,7 +650,8 @@ public class RCS1271FixStructuralHonestyTests :
                         public required int Property2 { get; init; }
                     }
                     """
-                ]
+                ],
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -627,18 +667,20 @@ public class RCS1271FixStructuralHonestyTests :
                 Nested = [|new MyType
                 {
                     Property1 = 3,
-                    Property2 = 4
+                    Property2 = 4,
+                    Nested = null
                 }|]
             }|];
             MyType myVariable2 = [|new MyType {
-                Property1 = 1,
-                Property2 = 2,
-                Nested = [|new MyType
-                {
-                    Property1 = 3,
-                    Property2 = 4
-                }|]
-            }|];
+                        Property1 = 1,
+                        Property2 = 2,
+            Nested = [|new MyType
+            {
+                Property1 = 3,
+                Property2 = 4,
+                Nested = null
+            }|]
+                    }|];
             """,
             """
             MyType myVariable = 
@@ -650,18 +692,21 @@ public class RCS1271FixStructuralHonestyTests :
                         new MyType
                         {
                             Property1 = 3,
-                            Property2 = 4
+                            Property2 = 4,
+                            Nested = null
                         }
                 };
             MyType myVariable2 = 
-                new MyType {
+                new MyType 
+                {
                     Property1 = 1,
                     Property2 = 2,
                     Nested = 
                         new MyType
                         {
                             Property1 = 3,
-                            Property2 = 4
+                            Property2 = 4,
+                            Nested = null
                         }
                 };
             """,
@@ -680,7 +725,8 @@ public class RCS1271FixStructuralHonestyTests :
                         """,
                         expectedSource: null
                     )
-                }
+                },
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -689,7 +735,7 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            var person = [|new Person { Name = "John", Age = 30 } with
+            var person = [|new Person("John", 30) with
             {
                 Age = 31
             }|];
@@ -700,7 +746,7 @@ public class RCS1271FixStructuralHonestyTests :
             """,
             """
             var person = 
-                new Person { Name = "John", Age = 30 } 
+                new Person("John", 30) 
                     with
                     {
                         Age = 31
@@ -719,7 +765,8 @@ public class RCS1271FixStructuralHonestyTests :
                         "public sealed record Person(string Name, int Age);",
                         expectedSource: null
                     )
-                }
+                },
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 

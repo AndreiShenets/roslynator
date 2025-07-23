@@ -4,7 +4,6 @@
 
 using System.Collections.Immutable;
 using System.Composition;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
@@ -45,6 +44,13 @@ public sealed class FixStructuralHonestyFixProvider : BaseCodeFixProvider
                         case SyntaxKind.ParenthesizedLambdaExpression:
                         case SyntaxKind.InvocationExpression:
                         case SyntaxKind.AwaitExpression:
+                        case SyntaxKind.AnonymousObjectCreationExpression:
+                        case SyntaxKind.ArrayCreationExpression:
+                        case SyntaxKind.ObjectCreationExpression:
+                        case SyntaxKind.ImplicitArrayCreationExpression:
+                        case SyntaxKind.StackAllocArrayCreationExpression:
+                        case SyntaxKind.ImplicitObjectCreationExpression:
+                        case SyntaxKind.ImplicitStackAllocArrayCreationExpression:
                             return true;
                         default:
                             return false;
