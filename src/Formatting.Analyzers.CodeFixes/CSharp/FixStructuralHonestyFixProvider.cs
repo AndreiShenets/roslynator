@@ -53,6 +53,11 @@ public sealed class FixStructuralHonestyFixProvider : BaseCodeFixProvider
                         case SyntaxKind.ImplicitStackAllocArrayCreationExpression:
                         case SyntaxKind.WithInitializerExpression:
                         case SyntaxKind.WithExpression:
+                        case SyntaxKind.AnonymousMethodExpression:
+                        case SyntaxKind.QueryExpression:
+                        case SyntaxKind.CollectionExpression:
+                        case SyntaxKind.SwitchExpression:
+                        case SyntaxKind.TupleExpression:
                             return true;
                         default:
                             return false;

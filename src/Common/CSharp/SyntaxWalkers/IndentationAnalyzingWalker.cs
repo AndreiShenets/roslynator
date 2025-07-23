@@ -112,58 +112,44 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
     {
         SyntaxKind syntaxKind = nodeOrToken.Kind();
 
-        if (
-            syntaxKind is SyntaxKind.AnonymousObjectCreationExpression
-                or SyntaxKind.ArrayCreationExpression
-                or SyntaxKind.ObjectCreationExpression
-                or SyntaxKind.ImplicitArrayCreationExpression
-                or SyntaxKind.StackAllocArrayCreationExpression
-                or SyntaxKind.ImplicitObjectCreationExpression
-                or SyntaxKind.ImplicitStackAllocArrayCreationExpression
-        )
+        switch (syntaxKind)
         {
-            return true;
-        }
-
-        if (syntaxKind is SyntaxKind.ParenthesizedLambdaExpression
+            case SyntaxKind.AnonymousObjectCreationExpression:
+            case SyntaxKind.ArrayCreationExpression:
+            case SyntaxKind.ObjectCreationExpression:
+            case SyntaxKind.ImplicitArrayCreationExpression:
+            case SyntaxKind.StackAllocArrayCreationExpression:
+            case SyntaxKind.ImplicitObjectCreationExpression:
+            case SyntaxKind.ImplicitStackAllocArrayCreationExpression:
+            case SyntaxKind.AnonymousMethodExpression:
+            case SyntaxKind.QueryExpression:
+            case SyntaxKind.OpenBraceToken:
+            case SyntaxKind.CloseBracketToken:
+            case SyntaxKind.CloseParenToken:
+            case SyntaxKind.CloseBraceToken:
+            case SyntaxKind.WithInitializerExpression:
+            case SyntaxKind.WithExpression:
+            case SyntaxKind.CollectionExpression:
+            case SyntaxKind.SwitchExpression:
+            case SyntaxKind.TupleExpression:
+            // The case with AwaitExpression should be handled on its level
+            case SyntaxKind.ParenthesizedLambdaExpression
                 or SyntaxKind.SimpleLambdaExpression
                 or SyntaxKind.InvocationExpression
-            && nodeOrToken.Parent?.Kind() is not SyntaxKind.AwaitExpression
-        )
-        {
-            // The case with AwaitExpression should be handled on its level
-            return true;
+                when nodeOrToken.Parent?.Kind() is not SyntaxKind.AwaitExpression:
+            case SyntaxKind.AwaitExpression
+                when nodeOrToken.IsNode
+                && nodeOrToken.AsNode()!.ChildNodes()
+                    .Any(
+                        c =>
+                            c.Kind() is SyntaxKind.ParenthesizedLambdaExpression
+                                or SyntaxKind.SimpleLambdaExpression
+                                or SyntaxKind.InvocationExpression
+                    ):
+                return true;
+            default:
+                return false;
         }
-
-        if (syntaxKind == SyntaxKind.AwaitExpression
-            && nodeOrToken.IsNode
-            && nodeOrToken.AsNode()!.ChildNodes()
-                .Any(
-                    c =>
-                        c.Kind() is SyntaxKind.ParenthesizedLambdaExpression
-                            or SyntaxKind.SimpleLambdaExpression
-                            or SyntaxKind.InvocationExpression
-                )
-        )
-        {
-            return true;
-        }
-
-        if (syntaxKind is SyntaxKind.OpenBraceToken
-            or SyntaxKind.CloseBracketToken
-            or SyntaxKind.CloseParenToken
-            or SyntaxKind.CloseBraceToken
-        )
-        {
-            return true;
-        }
-
-        if (syntaxKind is SyntaxKind.WithInitializerExpression or SyntaxKind.WithExpression)
-        {
-            return true;
-        }
-
-        return false;
     }
 
     public override void VisitToken(SyntaxToken token)
@@ -182,7 +168,9 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
                 }
                 break;
             case SyntaxKind.CloseParenToken or SyntaxKind.CloseBraceToken or SyntaxKind.CloseBracketToken:
-                if (token.Parent?.IsMultiLine() is true)
+                if (token.Parent?.IsMultiLine() is true
+                    && token.Parent is not ImplicitArrayCreationExpressionSyntax or ArrayCreationExpressionSyntax
+                )
                 {
                     string expectedIndentation = GetExpectedIndentation(token);
                     (bool applicable, bool stop) = CheckIndentation(token, expectedIndentation);
@@ -240,6 +228,19 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
                                 or InitializerExpressionSyntax
                                 or WithExpressionSyntax
                             || syntaxNode.Parent is WithExpressionSyntax
+                            || syntaxNode is QueryBodySyntax
+                            || (
+                                syntaxNode is FromClauseSyntax
+                                    or WhereClauseSyntax
+                                    or GroupClauseSyntax
+                                    or OrderByClauseSyntax
+                                    or JoinClauseSyntax
+                                    or JoinIntoClauseSyntax
+                                    or SelectClauseSyntax
+                                    or SelectOrGroupClauseSyntax
+                                    or LetClauseSyntax
+                                && syntaxNode.Parent is QueryBodySyntax
+                            )
                         )
                     )
                     || nodeOrToken is { IsToken: true, Parent: InitializerExpressionSyntax }
@@ -252,9 +253,11 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
 
                 if (nodeOrToken.IsToken
                     && nodeOrToken.AsToken().Kind()
-                        is SyntaxKind.CloseParenToken
-                        or SyntaxKind.OpenBraceToken // Part of a block
-                        or SyntaxKind.CloseBraceToken // Part of a block
+                        is SyntaxKind.OpenParenToken
+                        or SyntaxKind.CloseParenToken
+                        or SyntaxKind.OpenBraceToken
+                        or SyntaxKind.CloseBraceToken
+                        or SyntaxKind.OpenBracketToken
                         or SyntaxKind.CloseBracketToken
                 )
                 {

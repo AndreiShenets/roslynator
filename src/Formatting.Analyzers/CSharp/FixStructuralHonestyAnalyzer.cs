@@ -48,7 +48,12 @@ public sealed class FixStructuralHonestyAnalyzer : BaseDiagnosticAnalyzer
             SyntaxKind.StackAllocArrayCreationExpression,
             SyntaxKind.ImplicitObjectCreationExpression,
             SyntaxKind.ImplicitStackAllocArrayCreationExpression,
-            SyntaxKind.WithInitializerExpression
+            SyntaxKind.WithInitializerExpression,
+            SyntaxKind.AnonymousMethodExpression,
+            SyntaxKind.QueryExpression,
+            SyntaxKind.CollectionExpression,
+            SyntaxKind.SwitchExpression,
+            SyntaxKind.TupleExpression
         );
         // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.NewKeyword);
         // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.AnonymousMethodExpression);

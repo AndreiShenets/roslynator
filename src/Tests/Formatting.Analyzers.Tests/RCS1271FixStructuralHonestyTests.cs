@@ -919,6 +919,11 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
+            using System.Collections.Generic;
+            using System.Linq;
+            
+            List<(string Name, string Value, bool IsValid)> collection = [];
+            
             var query = [|from item in collection
                 where item.IsValid
                 select [|new
@@ -928,6 +933,11 @@ public class RCS1271FixStructuralHonestyTests :
                 }|]|];
             """,
             """
+            using System.Collections.Generic;
+            using System.Linq;
+            
+            List<(string Name, string Value, bool IsValid)> collection = [];
+            
             var query = 
                 from item in collection
                 where item.IsValid
@@ -937,7 +947,8 @@ public class RCS1271FixStructuralHonestyTests :
                         Name = item.Name,
                         Value = item.Value
                     };
-            """
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -946,6 +957,11 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
+            using System.Collections.Generic;
+            using System.Linq;
+            
+            List<(string Name, string Value, bool IsValid)> collection = [];
+            
             var query = [|from item in collection
                         where item.IsValid
                         select [|new
@@ -955,6 +971,11 @@ public class RCS1271FixStructuralHonestyTests :
                         }|]|];
             """,
             """
+            using System.Collections.Generic;
+            using System.Linq;
+            
+            List<(string Name, string Value, bool IsValid)> collection = [];
+            
             var query = 
                 from item in collection
                 where item.IsValid
@@ -964,7 +985,8 @@ public class RCS1271FixStructuralHonestyTests :
                         Name = item.Name,
                         Value = item.Value
                     };
-            """
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -986,27 +1008,8 @@ public class RCS1271FixStructuralHonestyTests :
                     Name = "John",
                     Age = 30
                 };
-            """
-        );
-    }
-
-    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task Fixes_Structural_Honesty_for_new_generic_list()
-    {
-        await VerifyDiagnosticAndFixAsync(
-            """
-            var list = [|new List<int>
-            {
-                1, 2, 3, 4, 5
-            }|];
             """,
-            """
-            var list = 
-                new List<int>
-                {
-                    1, 2, 3, 4, 5
-                };
-            """
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -1039,87 +1042,74 @@ public class RCS1271FixStructuralHonestyTests :
                     new int[] { 3, 4, 5 },
                     new int[] { 6 }
                 };
-            """
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task Fixes_Structural_Honesty_for_new_list_short_syntax()
+    public async Task Fixes_Structural_Honesty_for_new_list()
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            List<int> list = [|new ()
+            using System.Collections.Generic;
+
+            List<int> list = [|new List<int>()
             {
                 1, 2, 3, 4, 5
             }|];
-            List<int> list2 = [|new()
+            list = [|new ()
             {
                 1, 2, 3, 4, 5
             }|];
-            list2 = [|new()
+            list = [|new()
             {
                 1, 2, 3, 4, 5
             }|];
+            list = new () { 1, 2, 3, 4, 5 };
+            list = [|[
+                1, 2, 3, 4, 5
+            ]|];
+            list = 
+            [|[
+                1, 2, 3, 4, 5
+            ]|];
+            list = [ 1, 2, 3, 4, 5 ];
+            list = 
+                [ 1, 2, 3, 4, 5 ];
             """,
             """
+            using System.Collections.Generic;
+
             List<int> list = 
+                new List<int>()
+                {
+                    1, 2, 3, 4, 5
+                };
+            list = 
                 new ()
                 {
                     1, 2, 3, 4, 5
                 };
-            List<int> list2 = 
+            list = 
                 new()
                 {
                     1, 2, 3, 4, 5
                 };
-            list2 = 
-                new()
-                {
+            list = new () { 1, 2, 3, 4, 5 };
+            list = 
+                [
                     1, 2, 3, 4, 5
-                };
-            """
-        );
-    }
-
-    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task No_diagnostic_for_single_lined_new_list_short_syntax()
-    {
-        await VerifyNoDiagnosticAsync(
-            "List<int> list = new () { 1, 2, 3, 4, 5 };"
-        );
-    }
-
-    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task Fixes_Structural_Honesty_for_new_list_as_collection_expression()
-    {
-        await VerifyDiagnosticAndFixAsync(
-            """
-            List<int> list = [|[
-                1, 2, 3, 4, 5
-            ]|];
-            List<int> list2 = 
-            [|[
-                1, 2, 3, 4, 5
-            ]|];
+                ];
+            list = 
+                [
+                    1, 2, 3, 4, 5
+                ];
+            list = [ 1, 2, 3, 4, 5 ];
+            list = 
+                [ 1, 2, 3, 4, 5 ];
             """,
-            """
-            List<int> list = 
-                [
-                    1, 2, 3, 4, 5
-                ];
-            List<int> list2 = 
-                [
-                    1, 2, 3, 4, 5
-                ];
-            """
-        );
-    }
-
-    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task No_diagnostic_for_single_lined_collection_expression()
-    {
-        await VerifyNoDiagnosticAsync(
-            "List<int> list = [ 1, 2, 3, 4, 5 ];"
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -1145,7 +1135,8 @@ public class RCS1271FixStructuralHonestyTests :
                     2 => "Two",
                     _ => "Other"
                 };
-            """
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -1172,7 +1163,8 @@ public class RCS1271FixStructuralHonestyTests :
                         2 => "Two",
                         _ => "Other"
                     };
-            """
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -1211,7 +1203,8 @@ public class RCS1271FixStructuralHonestyTests :
                     Name: "John", 
                     Age: 30,
                     Sister: 
-                        new {
+                        new 
+                        {
                             Name = "Jane",
                         }
                 );
@@ -1225,7 +1218,8 @@ public class RCS1271FixStructuralHonestyTests :
                             Age: 20
                         )
                 );
-            """
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
