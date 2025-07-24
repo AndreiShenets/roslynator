@@ -58,6 +58,9 @@ public sealed class FixStructuralHonestyFixProvider : BaseCodeFixProvider
                         case SyntaxKind.CollectionExpression:
                         case SyntaxKind.SwitchExpression:
                         case SyntaxKind.TupleExpression:
+                        case SyntaxKind.ConditionalExpression:
+                        case SyntaxKind.MultiLineRawStringLiteralToken:
+                        case SyntaxKind.InterpolatedVerbatimStringStartToken:
                             return true;
                         default:
                             return false;

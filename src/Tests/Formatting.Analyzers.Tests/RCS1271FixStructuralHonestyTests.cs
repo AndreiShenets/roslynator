@@ -21,8 +21,13 @@ public class RCS1271FixStructuralHonestyTests :
             using System;
             using System.Threading.Tasks;
 
-            int result3 = [|MyMethod([|(int a, int b, int c) 
-            => 10|])|];
+            object obj = "abc";
+            var result = 
+                obj is string s3 
+                    ? 
+                        s3.Length 
+                    : 
+                        0;
 
             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
                 => Task.FromResult(1);
@@ -35,11 +40,13 @@ public class RCS1271FixStructuralHonestyTests :
             using System;
             using System.Threading.Tasks;
 
-            int result3 = 
-                MyMethod(
-                    (int a, int b, int c) 
-                        => 10
-                );
+            object obj = "abc";
+            var result = 
+                obj is string s3 
+                    ? 
+                        s3.Length 
+                    : 
+                        0;
 
             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
                 => Task.FromResult(1);
@@ -1198,7 +1205,7 @@ public class RCS1271FixStructuralHonestyTests :
                     Name: "John", 
                     Age: 30
                 );
-            var person2 =
+            var person2 = 
                 (
                     Name: "John", 
                     Age: 30,
@@ -1229,7 +1236,8 @@ public class RCS1271FixStructuralHonestyTests :
         await VerifyNoDiagnosticAsync(
             """
             var person = (Name: "John", Age: 30);
-            """
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -1244,6 +1252,23 @@ public class RCS1271FixStructuralHonestyTests :
                 : obj is int i
                     ? i
                     : 0|];
+            result = 
+                [|obj is string s1
+                        ? s1.Length
+                        : 0|];
+            result = 
+                [|obj is string s3 
+                    ? s3.Length : 0|];
+            result = 
+                [|obj is string s4 ? s4.Length 
+                    : 0|];
+            result = 
+                obj is string s5 
+                    ? 
+                        s5.Length 
+                    : 
+                        0;
+            result = obj is string s2 ? s2.Length : 0;
             """,
             """
             object obj = "abc";
@@ -1253,7 +1278,27 @@ public class RCS1271FixStructuralHonestyTests :
                     : obj is int i
                         ? i
                         : 0;
-            """
+            result = 
+                obj is string s1
+                    ? s1.Length
+                    : 0;
+            result = 
+                obj is string s3 
+                    ? s3.Length 
+                    : 0;
+            result = 
+                obj is string s4 
+                    ? s4.Length 
+                    : 0;
+            result = 
+                obj is string s5 
+                    ? 
+                        s5.Length 
+                    : 
+                        0;
+            result = obj is string s2 ? s2.Length : 0;
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -1264,14 +1309,15 @@ public class RCS1271FixStructuralHonestyTests :
             """
             object obj = "abc";
             var result = [|obj is string s
-                && ((string)obj).Length = 10|];
+                && s.Length == 10|];
             """,
             """
             object obj = "abc";
             var result = 
-                obj is string s
-                && ((string)obj).Length = 10;
-            """
+                obj is string
+                && s.Length == 10;
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -1285,6 +1331,11 @@ public class RCS1271FixStructuralHonestyTests :
                 Name = "John",
                 Age = 30
             }|])|];
+            
+            static void ProcessPerson(object person)
+            {
+                // Process the person object
+            }
             """,
             """
             ProcessPerson(
@@ -1294,7 +1345,13 @@ public class RCS1271FixStructuralHonestyTests :
                     Age = 30
                 }
             );
-            """
+            
+            static void ProcessPerson(object person)
+            {
+                // Process the person object
+            }
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -1303,23 +1360,28 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
+            using System.Linq;
+            
             int? x = 1;
             var message = $@"User details:
             {
                 [|Enumerable.Range(1, 10).Select([|i => 
-                    x.HasValue ? $"Value: {x.value + i}" : "No value"|])|]
+                    x.HasValue ? $"Value: {x.Value + i}" : "No value"|])|]
             }";
             """,
             """
+            using System.Linq;
+
             int? x = 1;
             var message = $@"User details:
             {
                 Enumerable.Range(1, 10).Select(
                     i => 
-                        x.HasValue ? $"Value: {x.value + i}" : "No value"
+                        x.HasValue ? $"Value: {x.Value + i}" : "No value"
                 )
             }";
-            """
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -1328,13 +1390,15 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyNoDiagnosticAsync(
             """
+            using System.Linq;
+
             int? x = 1;
             var message = $@"User details: 
             {
-                x.HasValue ? $"Value: {x.value}" : "No value"
+                x.HasValue ? $"Value: {x.Value}" : "No value"
             }";
             var message2 = $@"User details: {
-                x.HasValue ? $"Value: {x.value}" : "No value"
+                x.HasValue ? $"Value: {x.Value}" : "No value"
             }";
             """
         );
@@ -1388,23 +1452,24 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            C.CheckOptionsCalculatedFor(
+            [|C.CheckOptionsCalculatedFor(
                 string.Empty,
                 option2: [|new {
                     i = 1,
                     b = 2
                 }|]
-            )
+            )|];
             """,
             """
             C.CheckOptionsCalculatedFor(
                 string.Empty,
                 option2: 
-                    new {
+                    new 
+                    {
                         i = 1,
                         b = 2
                     }
-            )}
+            );
             """,
             additionalFiles:
                 new (string source, string expectedSource)[]
@@ -1413,12 +1478,13 @@ public class RCS1271FixStructuralHonestyTests :
                         source:
                             """
                             public static class C {
-                                public static bool CheckOptionsCalculatedFor(string option1 = "", object option2 = "") => true;
+                                public static bool CheckOptionsCalculatedFor(string option1 = "", object option2 = null) => true;
                             }
                             """,
                         expectedSource: null
                     )
-                }
+                },
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -1427,18 +1493,23 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
+            using System.Linq;
+
             int x = [|Enumerable.Range(1, 10)
                 .Select(i => i)
                 .Where(i => i > 5)
                 .Select(i => i).Count()|];
             """,
             """
+            using System.Linq;
+
             int x = 
                 Enumerable.Range(1, 10)
-                .Select(i => i)
-                .Where(i => i > 5)
-                .Select(i => i).Count();
-            """
+                    .Select(i => i)
+                    .Where(i => i > 5)
+                    .Select(i => i).Count();
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -1472,7 +1543,8 @@ public class RCS1271FixStructuralHonestyTests :
                         """,
                         expectedSource: null
                     )
-                }
+                },
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -1500,7 +1572,8 @@ public class RCS1271FixStructuralHonestyTests :
                         }
                     )
                     .Select(i => i).Count());
-            """
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -1556,7 +1629,8 @@ public class RCS1271FixStructuralHonestyTests :
                     }
                  )
                 .Count();
-            """
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -1618,7 +1692,8 @@ public class RCS1271FixStructuralHonestyTests :
                             return i + b;
                         };
                 };
-            """
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -1638,7 +1713,8 @@ public class RCS1271FixStructuralHonestyTests :
                 abc
                 cde
                 """;
-            """"
+            """",
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -1658,7 +1734,8 @@ public class RCS1271FixStructuralHonestyTests :
                 abc
                 cde
                 """u8;
-            """"
+            """",
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -1692,7 +1769,8 @@ public class RCS1271FixStructuralHonestyTests :
                         """,
                         expectedSource: null
                     )
-                }
+                },
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -1730,7 +1808,8 @@ public class RCS1271FixStructuralHonestyTests :
                         """,
                         expectedSource: null
                     )
-                }
+                },
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -1739,6 +1818,11 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """"
+            using System.Threading.Tasks;
+
+            Tst c = new();
+            await c.Test();
+            
             public class Tst {
                 public async Task Test()
                 {
@@ -1763,6 +1847,8 @@ public class RCS1271FixStructuralHonestyTests :
             }
             """",
             """"
+            using System.Threading.Tasks;
+
             public class Tst {
                 public async Task Test()
                 {
@@ -1796,13 +1882,16 @@ public class RCS1271FixStructuralHonestyTests :
                     (
                         source:
                         """
+                        using System.Threading.Tasks;
+
                         public static class C {
-                            public static bool Check(string s, string t, string options) => true;
+                            public static Task<bool> Check(string s, string t, string options) => Task.FromResult(true);
                         }
                         """,
                         expectedSource: null
                     )
-                }
+                },
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
@@ -1811,18 +1900,22 @@ public class RCS1271FixStructuralHonestyTests :
     {
         await VerifyDiagnosticAndFixAsync(
             """
+            using System.Threading.Tasks;
+
             int myVariable = 
-                await MyMethodAsync(
+                [|await MyMethodAsync(
                     10, [|[
                         1,
                         2,
                         3
                     ]|]
-                );
+                )|];
 
-            async Task<int> MyMethodAsync(int i, int[] arr) => 1;
+            Task<int> MyMethodAsync(int i, int[] arr) => Task.FromResult(1);
             """,
             """
+            using System.Threading.Tasks;
+            
             int myVariable = 
                 await MyMethodAsync(
                     10, 
@@ -1833,8 +1926,9 @@ public class RCS1271FixStructuralHonestyTests :
                     ]
                 );
 
-            async Task<int> MyMethodAsync(int i, int[] arr) => 1;
-            """
+            Task<int> MyMethodAsync(int i, int[] arr) => Task.FromResult(1);
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 }

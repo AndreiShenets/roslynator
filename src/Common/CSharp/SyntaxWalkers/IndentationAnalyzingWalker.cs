@@ -132,7 +132,14 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
             case SyntaxKind.CollectionExpression:
             case SyntaxKind.SwitchExpression:
             case SyntaxKind.TupleExpression:
+            case SyntaxKind.MultiLineRawStringLiteralToken:
+            case SyntaxKind.InterpolatedVerbatimStringStartToken:
+            case SyntaxKind.ConditionalExpression
+                when nodeOrToken.Parent?.Kind() is not SyntaxKind.ConditionalExpression:
             // The case with AwaitExpression should be handled on its level
+            case SyntaxKind.QuestionToken or SyntaxKind.ColonToken
+                when nodeOrToken.Parent?.Kind() is SyntaxKind.ConditionalExpression
+                    && nodeOrToken.Parent.IsMultiLine():
             case SyntaxKind.ParenthesizedLambdaExpression
                 or SyntaxKind.SimpleLambdaExpression
                 or SyntaxKind.InvocationExpression
@@ -171,6 +178,18 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
                 if (token.Parent?.IsMultiLine() is true
                     && token.Parent is not ImplicitArrayCreationExpressionSyntax or ArrayCreationExpressionSyntax
                 )
+                {
+                    string expectedIndentation = GetExpectedIndentation(token);
+                    (bool applicable, bool stop) = CheckIndentation(token, expectedIndentation);
+                    if (applicable && stop)
+                    {
+                        return;
+                    }
+                }
+                break;
+            case SyntaxKind.QuestionToken or SyntaxKind.ColonToken
+                when token.Parent?.Kind() is SyntaxKind.ConditionalExpression:
+                if (token.Parent?.IsMultiLine() is true)
                 {
                     string expectedIndentation = GetExpectedIndentation(token);
                     (bool applicable, bool stop) = CheckIndentation(token, expectedIndentation);
@@ -272,6 +291,36 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
             parent = parent.Parent;
         }
 
+        if (nodeOrToken.Parent is ArgumentSyntax argumentSyntax
+            && argumentSyntax.NameColon is not null
+            && CheckApplicableForIndentation(nodeOrToken)
+        )
+        {
+            expectedIndentation += _singleIndentation;
+        }
+
+        if (nodeOrToken.Parent is ConditionalExpressionSyntax conditionalExpressionSyntax)
+        {
+            if (nodeOrToken.Parent.Parent?.Kind() is SyntaxKind.ConditionalExpression)
+            {
+                expectedIndentation += _singleIndentation;
+            }
+            else if (nodeOrToken.IsNode)
+            {
+                SyntaxNode node = nodeOrToken.AsNode()!;
+
+                if (ReferenceEquals(conditionalExpressionSyntax.WhenTrue, node))
+                {
+                    expectedIndentation += _singleIndentation;
+                }
+
+                if (ReferenceEquals(conditionalExpressionSyntax.WhenFalse, node))
+                {
+                    expectedIndentation += _singleIndentation;
+                }
+            }
+        }
+
         return expectedIndentation;
     }
 
@@ -294,16 +343,27 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
             // It might the case when there is a multi-line comment bound as a trailing trivia to the previous node
             if (!CheckNothingButMultilineCommentFromParentTrailingTrivia(nodeOrToken, out SyntaxTrivia trivia))
             {
-                if ((nodeOrToken.IsNode && nodeOrToken.AsNode()!.IsMultiLine() && CheckApplicableForIndentation(nodeOrToken))
+#pragma warning disable RCS0055
+                if (
+                    (nodeOrToken.IsNode && nodeOrToken.AsNode()!.IsMultiLine() && CheckApplicableForIndentation(nodeOrToken))
                     || (nodeOrToken.IsToken
-                        && nodeOrToken.Kind()
-                            is SyntaxKind.CloseParenToken
-                            or SyntaxKind.OpenBraceToken
-                            or SyntaxKind.CloseBraceToken
-                            or SyntaxKind.CloseBracketToken
-                        && !CheckNothingButWhitespacesInFront(nodeOrToken.SpanStart)
+                        && (
+                            (
+                                nodeOrToken.Kind()
+                                    is SyntaxKind.CloseParenToken
+                                    or SyntaxKind.OpenBraceToken
+                                    or SyntaxKind.CloseBraceToken
+                                    or SyntaxKind.CloseBracketToken
+                                && !CheckNothingButWhitespacesInFront(nodeOrToken.SpanStart)
+                            )
+                            || (
+                                nodeOrToken.Kind() is SyntaxKind.QuestionToken or SyntaxKind.ColonToken
+                                && CheckApplicableForIndentation(nodeOrToken)
+                            )
+                        )
                     )
                 )
+#pragma warning restore RCS0055
                 {
                     stop =
                         HandleChange(
@@ -376,19 +436,23 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
         }
         else
         {
+            bool nothingButTriviaInFront = CheckNothingButTriviaInFront(nodeOrToken);
+            if (nothingButTriviaInFront)
             // No trivia, but it should be there to indent the node
-            if (nodeLinePosition.Character != expectedIndentation.Length)
             {
-                stop =
-                    HandleChange(
-                        new TextSpan(nodeOrToken.Span.Start, 0),
-                        nodeLinePosition.Character == 0
-                            ? expectedIndentation
-                            : newLine + expectedIndentation
-                    );
-                if (stop)
+                if (nodeLinePosition.Character != expectedIndentation.Length)
                 {
-                    return (Applicable: true, Stop: true);
+                    stop =
+                        HandleChange(
+                            new TextSpan(nodeOrToken.Span.Start, 0),
+                            nodeLinePosition.Character == 0
+                                ? expectedIndentation
+                                : newLine + expectedIndentation
+                        );
+                    if (stop)
+                    {
+                        return (Applicable: true, Stop: true);
+                    }
                 }
             }
         }
@@ -580,15 +644,15 @@ public sealed class IndentationAnalyzingWalker : CSharpSyntaxWalker
 
     private bool CheckNothingButTriviaInFront(SyntaxNodeOrToken nodeOrToken)
     {
+        if (CheckParentOnTheSameLine(nodeOrToken))
+        {
+            return false;
+        }
+
         LinePosition nodeLinePosition = _textLines.GetLinePosition(nodeOrToken.SpanStart);
         if (nodeLinePosition.Character == 0)
         {
             return true;
-        }
-
-        if (CheckParentOnTheSameLine(nodeOrToken))
-        {
-            return false;
         }
 
         bool nothingButWhitespacesInFront = CheckNothingButWhitespacesInFront(nodeOrToken.SpanStart);

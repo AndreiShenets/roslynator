@@ -53,7 +53,10 @@ public sealed class FixStructuralHonestyAnalyzer : BaseDiagnosticAnalyzer
             SyntaxKind.QueryExpression,
             SyntaxKind.CollectionExpression,
             SyntaxKind.SwitchExpression,
-            SyntaxKind.TupleExpression
+            SyntaxKind.TupleExpression,
+            SyntaxKind.ConditionalExpression,
+            SyntaxKind.MultiLineRawStringLiteralToken,
+            SyntaxKind.InterpolatedVerbatimStringStartToken
         );
         // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.NewKeyword);
         // context.RegisterSyntaxNodeAction(f => AnalyzeArgumentList(f), SyntaxKind.AnonymousMethodExpression);
