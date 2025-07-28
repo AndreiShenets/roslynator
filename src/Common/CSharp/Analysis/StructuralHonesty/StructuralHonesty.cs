@@ -2,10 +2,9 @@
 
 using System.Threading;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
-using Roslynator.CSharp.Analysis.StructuralHonesty.SyntaxRewriters;
+using Microsoft.CodeAnalysis.Text;
 
 namespace Roslynator.CSharp.Analysis.StructuralHonesty;
 
@@ -23,19 +22,19 @@ public static class StructuralHonesty
         StructuralHonestySyntaxRewriter? rewriter = CreateRewriter(node, options, cancellationToken);
         if (rewriter is null)
         {
-            // If there is no rewriter, then it is either an unsupported case or the node is single-line.
             return false;
         }
+
         rewriter.DoAnalysisOnly = true;
 
         _ = rewriter.Visit(node);
 
-        return rewriter.HasStructuralHonestyIssues;
+        return rewriter.ChangesApplied;
     }
 
     /// <summary>
     /// Returns changed node with fixed structural honesty issues.
-    /// If the returned node is null, then the node is unchanged.
+    /// If the returning node is null, then the node is unchanged.
     /// </summary>
     public static SyntaxNode? Fix(
         SyntaxNode node,
@@ -53,12 +52,6 @@ public static class StructuralHonesty
         CancellationToken cancellationToken
     )
     {
-        if (node.IsSingleLine(cancellationToken: cancellationToken))
-        {
-            // No fix is required for single-line nodes.
-            return null;
-        }
-
         // Indentation analysis should be done on the parent of the node.
         // Weather the indentation is correct, we can say only relatively to its parent.
         SyntaxNode? parent = node.Parent;
@@ -79,23 +72,21 @@ public static class StructuralHonesty
         IndentationAnalysis indentationAnalysis =
             SyntaxTriviaAnalysis.AnalyzeIndentation(parent, options, cancellationToken);
 
+        string singleIndentation = indentationAnalysis.GetSingleIndentation();
+
         bool rootExpression =
             node.Parent is GlobalStatementSyntax
             || (node.Parent is ExpressionStatementSyntax expression && expression.Parent is GlobalStatementSyntax);
 
-        string expectedIndentation =
+        string parentIndentation =
             rootExpression
                 ? string.Empty
-                : indentationAnalysis.GetIncreasedIndentation();
+                : indentationAnalysis.Indentation.ToString();
 
-        string singleIndentation = indentationAnalysis.GetSingleIndentation();
+        SyntaxTree syntaxTree = node.SyntaxTree;
+        SourceText sourceText = syntaxTree.GetText(cancellationToken);
+        TextLineCollection textLines = sourceText.Lines;
 
-        StructuralHonestySyntaxRewriter syntaxRewriter =
-            node.Kind() switch
-            {
-                _ => new IndentingStructuralHonestySyntaxRewriter(expectedIndentation, singleIndentation)
-            };
-
-        return syntaxRewriter;
+        return new StructuralHonestySyntaxRewriter(syntaxTree, textLines, parentIndentation, singleIndentation, cancellationToken);
     }
 }

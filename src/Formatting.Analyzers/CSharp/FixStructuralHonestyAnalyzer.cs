@@ -40,6 +40,7 @@ public sealed class FixStructuralHonestyAnalyzer : BaseDiagnosticAnalyzer
             SyntaxKind.SimpleLambdaExpression,
             SyntaxKind.ParenthesizedLambdaExpression,
             SyntaxKind.InvocationExpression,
+            SyntaxKind.AwaitExpression,
             SyntaxKind.AnonymousObjectCreationExpression,
             SyntaxKind.ArrayCreationExpression,
             SyntaxKind.ObjectCreationExpression,
@@ -57,7 +58,22 @@ public sealed class FixStructuralHonestyAnalyzer : BaseDiagnosticAnalyzer
             SyntaxKind.TupleExpression,
             SyntaxKind.ConditionalExpression,
             SyntaxKind.MultiLineRawStringLiteralToken,
-            SyntaxKind.InterpolatedVerbatimStringStartToken
+            SyntaxKind.InterpolatedVerbatimStringStartToken,
+
+            SyntaxKind.EqualsValueClause,
+            SyntaxKind.AddAssignmentExpression,
+            SyntaxKind.SubtractAssignmentExpression,
+            SyntaxKind.MultiplyAssignmentExpression,
+            SyntaxKind.DivideAssignmentExpression,
+            SyntaxKind.ModuloAssignmentExpression,
+            SyntaxKind.AndAssignmentExpression,
+            SyntaxKind.ExclusiveOrAssignmentExpression,
+            SyntaxKind.OrAssignmentExpression,
+            SyntaxKind.LeftShiftAssignmentExpression,
+            SyntaxKind.RightShiftAssignmentExpression,
+            SyntaxKind.CoalesceAssignmentExpression,
+            SyntaxKind.SimpleAssignmentExpression,
+            SyntaxKind.UnsignedRightShiftAssignmentExpression
         );
     }
 

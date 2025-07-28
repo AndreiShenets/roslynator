@@ -58,6 +58,21 @@ public sealed class FixStructuralHonestyFixProvider : BaseCodeFixProvider
                         case SyntaxKind.ConditionalExpression:
                         case SyntaxKind.MultiLineRawStringLiteralToken:
                         case SyntaxKind.InterpolatedVerbatimStringStartToken:
+
+                        case SyntaxKind.EqualsValueClause:
+                        case SyntaxKind.AddAssignmentExpression:
+                        case SyntaxKind.SubtractAssignmentExpression:
+                        case SyntaxKind.MultiplyAssignmentExpression:
+                        case SyntaxKind.DivideAssignmentExpression:
+                        case SyntaxKind.ModuloAssignmentExpression:
+                        case SyntaxKind.AndAssignmentExpression:
+                        case SyntaxKind.ExclusiveOrAssignmentExpression:
+                        case SyntaxKind.OrAssignmentExpression:
+                        case SyntaxKind.LeftShiftAssignmentExpression:
+                        case SyntaxKind.RightShiftAssignmentExpression:
+                        case SyntaxKind.CoalesceAssignmentExpression:
+                        case SyntaxKind.SimpleAssignmentExpression:
+                        case SyntaxKind.UnsignedRightShiftAssignmentExpression:
                             return true;
                         default:
                             return false;
@@ -91,7 +106,7 @@ public sealed class FixStructuralHonestyFixProvider : BaseCodeFixProvider
         AnalyzerConfigOptions configOptions = document.GetConfigOptions(node.SyntaxTree);
         SyntaxNode? fixedNode = StructuralHonesty.Fix(node, configOptions, cancellationToken);
 
-        if (fixedNode is null)
+        if (fixedNode is null || ReferenceEquals(node, fixedNode))
         {
             // No changes required.
             return document;
