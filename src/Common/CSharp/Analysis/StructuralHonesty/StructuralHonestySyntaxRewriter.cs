@@ -48,6 +48,13 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             return null;
         }
 
+        if (ChangesApplied && DoAnalysisOnly)
+        {
+            // If at least one change was applied, then we should stop the analysis
+            // and return the node as is.
+            return node;
+        }
+
         // We shouldn't neither format trivia nor add something to the indentation cache if it is not the first node in the line.
         // Otherwise, each deeper level will have an additional unexpected indentation.
         if (!CheckNothingButTriviaInFront(node))
@@ -64,9 +71,9 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         // Are there changes?
         if (newNodeOrToken is not null)
         {
-            ChangesApplied = true;
             node = newNodeOrToken.Value.AsNode()!;
 
+            ChangesApplied = true;
             // Immediate stop if at least one change was applied
             if (DoAnalysisOnly)
             {
@@ -77,9 +84,9 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         newNodeOrToken = ReformatTrailingTrivia(node, expectedIndentation);
         if (newNodeOrToken is not null)
         {
-            ChangesApplied = true;
             node = newNodeOrToken.Value.AsNode()!;
 
+            ChangesApplied = true;
             // Immediate stop if at least one change was applied
             if (DoAnalysisOnly)
             {
@@ -93,6 +100,18 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         }
 
         return base.Visit(node);
+    }
+
+    public override SyntaxToken VisitToken(SyntaxToken token)
+    {
+        if (ChangesApplied && DoAnalysisOnly)
+        {
+            // If at least one change was applied, then we should stop the analysis
+            // and return the token as is.
+            return token;
+        }
+
+        return base.VisitToken(token);
     }
 
     public override SyntaxNode? VisitEqualsValueClause(EqualsValueClauseSyntax node)
@@ -111,7 +130,6 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             );
 
         ChangesApplied = true;
-
         // Immediate stop if at least one change was applied
         if (DoAnalysisOnly)
         {
@@ -157,11 +175,12 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         {
             openParenOnTheNewLine = true;
 
-            SyntaxNodeOrToken? changedOpenParenToken = ReformatLeadingTrivia(node.OpenParenToken, parentIndentation);
+            SyntaxNodeOrToken? changedOpenParenToken = ReformatLeadingTrivia(node.OpenParenToken, increasedParentIndentation);
 
             if (changedOpenParenToken is not null)
             {
                 node = node.WithOpenParenToken(changedOpenParenToken.Value.AsToken());
+
                 ChangesApplied = true;
                 // Immediate stop if at least one change was applied
                 if (DoAnalysisOnly)
@@ -170,11 +189,15 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                 }
             }
 
-            changedOpenParenToken = ReformatTrailingTrivia(node.OpenParenToken, increasedParentIndentation);
+            string doubleIncreasedParentIndentation =
+                increasedParentIndentation + _singleIndentation;
+
+            changedOpenParenToken = ReformatTrailingTrivia(node.OpenParenToken, doubleIncreasedParentIndentation);
 
             if (changedOpenParenToken is not null)
             {
                 node = node.WithOpenParenToken(changedOpenParenToken.Value.AsToken());
+
                 ChangesApplied = true;
                 // Immediate stop if at least one change was applied
                 if (DoAnalysisOnly)
@@ -186,16 +209,18 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         if (CheckNothingButTriviaInFront(node.CloseParenToken))
         {
-            string indentation =
-                openParenOnTheNewLine
-                    ? increasedParentIndentation
-                    : parentIndentation;
+            string closeParenIndentation = parentIndentation;
+            if (openParenOnTheNewLine)
+            {
+                closeParenIndentation = increasedParentIndentation;
+            }
 
-            SyntaxNodeOrToken? changedCloseParenToken = ReformatLeadingTrivia(node.CloseParenToken, indentation);
+            SyntaxNodeOrToken? changedCloseParenToken = ReformatLeadingTrivia(node.CloseParenToken, closeParenIndentation);
 
             if (changedCloseParenToken is not null)
             {
                 node = node.WithCloseParenToken(changedCloseParenToken.Value.AsToken());
+
                 ChangesApplied = true;
                 // Immediate stop if at least one change was applied
                 if (DoAnalysisOnly)
@@ -204,11 +229,12 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                 }
             }
 
-            changedCloseParenToken = ReformatTrailingTrivia(node.CloseParenToken, indentation);
+            changedCloseParenToken = ReformatTrailingTrivia(node.CloseParenToken, closeParenIndentation);
 
             if (changedCloseParenToken is not null)
             {
                 node = node.WithCloseParenToken(changedCloseParenToken.Value.AsToken());
+
                 ChangesApplied = true;
                 // Immediate stop if at least one change was applied
                 if (DoAnalysisOnly)
@@ -236,7 +262,9 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             {
                 // Moving closing paren to the next line
                 node = node.AppendToTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed);
+
                 ChangesApplied = true;
+                // Immediate stop if at least one change was applied
                 if (DoAnalysisOnly)
                 {
                     return node;
@@ -319,6 +347,20 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         (bool changesExist, List<SyntaxTrivia> newLeadingTrivia) = ReformatTrivia(node, expectedIndentation, leadingTrivia);
 
+        SyntaxTrivia lastTrivia = newLeadingTrivia.Last();
+
+        // It is expected to have the end of line + indent at the end
+        if (!lastTrivia.IsKind(SyntaxKind.WhitespaceTrivia))
+        {
+            if (!lastTrivia.IsKind(SyntaxKind.EndOfLineTrivia))
+            {
+                SyntaxTrivia newLine = SyntaxTriviaAnalysis.DetermineEndOfLine(node);
+                newLeadingTrivia.Add(newLine);
+            }
+
+            newLeadingTrivia.Add(SyntaxFactory.Whitespace(expectedIndentation));
+        }
+
         if (changesExist)
         {
             return node.WithLeadingTrivia(newLeadingTrivia);
@@ -332,7 +374,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         string expectedIndentation
     )
     {
-        SyntaxTriviaList leadingTrivia = node.GetLeadingTrivia();
+        SyntaxTriviaList leadingTrivia = node.GetTrailingTrivia();
         if (leadingTrivia.Count == 0)
         {
             return null;
@@ -351,71 +393,86 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
     private (bool changesExist, List<SyntaxTrivia> newLeadingTrivia) ReformatTrivia(
         SyntaxNodeOrToken node,
         string expectedIndentation,
-        SyntaxTriviaList leadingTrivia
+        SyntaxTriviaList triviaList
     )
     {
         bool changesExist = false;
 
         List<SyntaxTrivia> newLeadingTrivia =
-            leadingTrivia
-                .Select(
-                    trivia =>
-                    {
-                        if (trivia.IsKind(SyntaxKind.WhitespaceTrivia)
-                            && trivia.Span.Length != expectedIndentation.Length
-                        )
-                        {
-                            changesExist = true;
-                            return SyntaxFactory.Whitespace(expectedIndentation);
-                        }
-
-                        if (trivia.IsKind(SyntaxKind.MultiLineCommentTrivia)
-                            && node.SyntaxTree is not null
-                            && trivia.Span.IsMultiLine(node.SyntaxTree, _cancellationToken)
-                        )
-                        {
-                            // For multi-line comment trivia we need to check that the indentation of the content is correct
-                            // The content of the multi-line comment trivia is the text between the start and end of the trivia
-                            string[] splitContent =
-                                trivia.ToFullString()
-                                    .Split(SplitChars, StringSplitOptions.RemoveEmptyEntries);
-
-                            if (splitContent.Length > 1)
-                            {
-                                // The trivia on index 0 is already corrected above. Whatever is there is not relevant
-                                int minimumCommentIndentation = GetMinimumCommentIndentation(splitContent, startIndex: 1);
-
-                                if (minimumCommentIndentation != expectedIndentation.Length)
-                                {
-                                    int splitContentLastIndex = splitContent.Length - 1;
-                                    for (int i = 1; i <= splitContentLastIndex; i++)
-                                    {
-                                        string line = splitContent[i];
-                                        if (line.Length == 0)
-                                        {
-                                            continue;
-                                        }
-
-                                        int currentIndentationLength = GetIndentationLength(line);
-                                        int additionalIndentation = currentIndentationLength - minimumCommentIndentation;
-                                        int endSliceLength = line.Length - minimumCommentIndentation - additionalIndentation;
-                                        ReadOnlySpan<char> restOfTheLine = line.AsSpan().Slice(line.Length - endSliceLength, endSliceLength);
-                                        splitContent[i] = expectedIndentation + restOfTheLine.ToString();
-                                    }
-
-                                    SyntaxTrivia newLine = SyntaxTriviaAnalysis.DetermineEndOfLine(node);
-
-                                    return SyntaxFactory.Comment(string.Join(newLine.ToString(), splitContent));
-                                }
-                            }
-                        }
-
-                        return trivia;
-                    }
-                )
+            triviaList
+                .SelectMany((trivia, index) => CorrectTrivia(trivia, index))
                 .ToList();
 
         return (changesExist, newLeadingTrivia);
+
+        IEnumerable<SyntaxTrivia> CorrectTrivia(SyntaxTrivia trivia, int index)
+        {
+            if (trivia.IsKind(SyntaxKind.WhitespaceTrivia))
+            {
+                if (trivia.Span.Length != expectedIndentation.Length)
+                {
+                    changesExist = true;
+                    yield return SyntaxFactory.Whitespace(expectedIndentation);
+                }
+                yield return trivia;
+                yield break;
+            }
+
+            // Check if the trivia comments are properly indented
+            if (expectedIndentation.Length > 0
+                && trivia.Kind() is SyntaxKind.SingleLineCommentTrivia or SyntaxKind.MultiLineCommentTrivia
+                && (index == 0 || !triviaList[index - 1].IsKind(SyntaxKind.WhitespaceTrivia))
+            )
+            {
+                changesExist = true;
+                yield return SyntaxFactory.Whitespace(expectedIndentation);
+            }
+
+            if (trivia.IsKind(SyntaxKind.MultiLineCommentTrivia)
+                && node.SyntaxTree is not null
+                && trivia.Span.IsMultiLine(node.SyntaxTree, _cancellationToken)
+            )
+            {
+                // For multi-line comment trivia we need to check that the indentation of the content is correct
+                // The content of the multi-line comment trivia is the text between the start and end of the trivia
+                string[] splitContent =
+                    trivia.ToFullString()
+                        .Split(SplitChars, StringSplitOptions.RemoveEmptyEntries);
+
+                if (splitContent.Length > 1)
+                {
+                    // The trivia on index 0 is already corrected above. Whatever is there is not relevant
+                    int minimumCommentIndentation = GetMinimumCommentIndentation(splitContent, startIndex: 1);
+
+                    if (minimumCommentIndentation != expectedIndentation.Length)
+                    {
+                        int splitContentLastIndex = splitContent.Length - 1;
+                        for (int i = 1; i <= splitContentLastIndex; i++)
+                        {
+                            string line = splitContent[i];
+                            if (line.Length == 0)
+                            {
+                                continue;
+                            }
+
+                            int currentIndentationLength = GetIndentationLength(line);
+                            int additionalIndentation = currentIndentationLength - minimumCommentIndentation;
+                            int endSliceLength = line.Length - minimumCommentIndentation - additionalIndentation;
+                            ReadOnlySpan<char> restOfTheLine = line.AsSpan().Slice(line.Length - endSliceLength, endSliceLength);
+                            splitContent[i] = expectedIndentation + restOfTheLine.ToString();
+                        }
+
+                        SyntaxTrivia newLine = SyntaxTriviaAnalysis.DetermineEndOfLine(node);
+
+                        changesExist = true;
+                        yield return SyntaxFactory.Comment(string.Join(newLine.ToString(), splitContent));
+                        yield break;
+                    }
+                }
+            }
+
+            yield return trivia;
+        }
     }
 
     private static int GetMinimumCommentIndentation(string[] splitContent, int startIndex)
@@ -495,10 +552,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         SyntaxNode? parent = nodeOrToken.Parent;
         while (parent is not null)
         {
-            if (parent.Kind() is SyntaxKind.Argument)
+            // There are some classes that are kind of virtual wrappers over the real nodes and tokens.
+            // They should be excluded from the check as they are on the same line as the real node.
+            if (parent.Kind() is SyntaxKind.Argument or SyntaxKind.ArgumentList)
             {
-                // Argument syntax is kind of a virtual wrapper over the real argument.
-                // Only the real argument should be checked for indentation.
                 parent = parent.Parent;
                 continue;
             }
