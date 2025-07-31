@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using Microsoft.CodeAnalysis;
@@ -15,8 +16,6 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 {
     private static readonly char[] SplitChars = ['\r', '\n'];
 
-    private readonly SyntaxTree _syntaxTree;
-    private readonly TextLineCollection _textLines;
     private readonly string _parentIndentation;
     private readonly string _singleIndentation;
     private readonly CancellationToken _cancellationToken;
@@ -27,15 +26,11 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
     public bool ChangesApplied { get; set; }
 
     public StructuralHonestySyntaxRewriter(
-        SyntaxTree syntaxTree,
-        TextLineCollection textLines,
         string parentIndentation,
         string singleIndentation,
         CancellationToken cancellationToken
     )
     {
-        _syntaxTree = syntaxTree;
-        _textLines = textLines;
         _parentIndentation = parentIndentation;
         _singleIndentation = singleIndentation;
         _cancellationToken = cancellationToken;
@@ -55,15 +50,22 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             return node;
         }
 
-        // We shouldn't neither format trivia nor add something to the indentation cache if it is not the first node in the line.
-        // Otherwise, each deeper level will have an additional unexpected indentation.
-        if (!CheckNothingButTriviaInFront(node))
+        if (node.IsWrapper())
         {
             return base.Visit(node);
         }
 
-        // If we are here, then it is a node that is the first on the line
-        // Doesn't matter it is a single-lined or multi-lined node - it must be properly indented
+        // There are two actions that make code structurally honest: inserting new line and indenting.
+        // The inserting new line should be done in the Type specific methods like VisitEqualsValueClause, VisitArgumentList, etc.
+        // as it is much easier to do it there.
+        // The indentation should be done in the Visit and VisitToken methods because even if the node or token doesn't require
+        // a new line somewhere, its content or surrounding trivia may require indentation.
+
+        // We shouldn't add nodes to the indentation cache if it is not the first node in the line.
+        // Otherwise, each deeper level will have an additional unexpected indentation.
+        // We still have to try to format trivia as the single line breakdown to multiple lines
+        // and comment reformatting are still possible.
+        bool nothingButTriviaInFront = CheckNothingButTriviaInFront(node);
 
         string expectedIndentation = GetParentIndentation(node) + _singleIndentation;
         SyntaxNodeOrToken? newNodeOrToken = ReformatLeadingTrivia(node, expectedIndentation);
@@ -94,7 +96,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             }
         }
 
-        if (node.IsMultiLine())
+        if (nothingButTriviaInFront)
         {
             _indentationCache[node] = expectedIndentation;
         }
@@ -116,17 +118,26 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
     public override SyntaxNode? VisitEqualsValueClause(EqualsValueClauseSyntax node)
     {
+        // Value is single-lined and on the same line as the equals token
         if (node.Value.IsSingleLine(cancellationToken: _cancellationToken)
-            || node.EqualsToken.TrailingTrivia.LastOrDefault().IsKind(SyntaxKind.EndOfLineTrivia)
-            || node.Value.GetLeadingTrivia().FirstOrDefault().IsKind(SyntaxKind.EndOfLineTrivia)
+            && CheckOnTheSameLine(node.SyntaxTree, node.EqualsToken, node.Value)
         )
         {
             return base.VisitEqualsValueClause(node);
         }
 
+        InsertResult? insertResult = InsertNewLineWithTrailingTriviaMove(node.EqualsToken, node.Value);
+
+        // No changes
+        if (insertResult is null)
+        {
+            return base.VisitEqualsValueClause(node);
+        }
+
         node =
-            node.WithEqualsToken(
-                node.EqualsToken.AppendToTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed)
+            node.Update(
+                insertResult.Value.NewLeftPart.AsToken(),
+                (ExpressionSyntax)insertResult.Value.NewRightPart.AsNode()!
             );
 
         ChangesApplied = true;
@@ -173,6 +184,9 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         // A pervert case when someone placed the open paren to the new line
         if (CheckNothingButTriviaInFront(node.OpenParenToken))
         {
+            // Wrapper node becomes the parent node, although it has the wrapper kind
+            _indentationCache[node] = increasedParentIndentation;
+
             openParenOnTheNewLine = true;
 
             SyntaxNodeOrToken? changedOpenParenToken = ReformatLeadingTrivia(node.OpenParenToken, increasedParentIndentation);
@@ -205,6 +219,11 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                     return node;
                 }
             }
+        }
+
+        if (CheckOnTheSameLine(node.SyntaxTree, node.OpenParenToken, node.CloseParenToken))
+        {
+            return base.VisitArgumentList(node);
         }
 
         if (CheckNothingButTriviaInFront(node.CloseParenToken))
@@ -243,37 +262,89 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                 }
             }
         }
-
-        return base.VisitArgumentList(node);
-    }
-
-    public override SyntaxNode? VisitArgument(ArgumentSyntax node)
-    {
-        if (node.Parent is ArgumentListSyntax argumentListSyntax)
+        // The parens are expected to be on the different lines because of the check above
+        else
         {
-            LinePosition openParenLinePosition =
-                _textLines.GetLinePosition(argumentListSyntax.OpenParenToken.SpanStart);
-            LinePosition closeParenLinePosition =
-                _textLines.GetLinePosition(argumentListSyntax.CloseParenToken.SpanStart);
-
-            if (openParenLinePosition.Line != closeParenLinePosition.Line // Multi-lined
-                && argumentListSyntax.Arguments.Last() == node
-                && !node.GetTrailingTrivia().LastOrDefault().IsKind(SyntaxKind.EndOfLineTrivia))
+            // The closing paren is expected to be on a new line
+            if (node.Arguments.Count > 0)
             {
-                // Moving closing paren to the next line
-                node = node.AppendToTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed);
-
-                ChangesApplied = true;
-                // Immediate stop if at least one change was applied
-                if (DoAnalysisOnly)
+                ArgumentSyntax lastArgument = node.Arguments.Last();
+                InsertResult? insertResult = InsertNewLineWithTrailingTriviaMove(lastArgument, node.CloseParenToken);
+                if (insertResult is not null)
                 {
-                    return node;
+                    node =
+                        node.Update(
+                            node.OpenParenToken,
+                            node.Arguments.Replace(
+                                lastArgument,
+                                (ArgumentSyntax)insertResult.Value.NewLeftPart.AsNode()!
+                            ),
+                            insertResult.Value.NewRightPart.AsToken()
+                        );
+
+                    ChangesApplied = true;
+                    // Immediate stop if at least one change was applied
+                    if (DoAnalysisOnly)
+                    {
+                        return node;
+                    }
+                }
+            }
+            else
+            {
+                // If parens are on the different lines but there are no arguments,
+                // then nothing should be in front apart from multiline comments attached to the open paren
+                InsertResult? insertResult = InsertNewLineWithTrailingTriviaMove(node.OpenParenToken, node.CloseParenToken);
+                if (insertResult is not null)
+                {
+                    node =
+                        node.Update(
+                            insertResult.Value.NewLeftPart.AsToken(),
+                            node.Arguments,
+                            insertResult.Value.NewRightPart.AsToken()
+                        );
+
+                    ChangesApplied = true;
+                    // Immediate stop if at least one change was applied
+                    if (DoAnalysisOnly)
+                    {
+                        return node;
+                    }
                 }
             }
         }
 
-        return base.VisitArgument(node);
+        return base.VisitArgumentList(node);
     }
+
+    // public override SyntaxNode? VisitArgument(ArgumentSyntax node)
+    // {
+    //     if (node.Parent is ArgumentListSyntax argumentListSyntax)
+    //     {
+    //         LinePosition openParenLinePosition =
+    //             _textLines.GetLinePosition(argumentListSyntax.OpenParenToken.SpanStart);
+    //         LinePosition closeParenLinePosition =
+    //             _textLines.GetLinePosition(argumentListSyntax.CloseParenToken.SpanStart);
+    //
+    //         if (openParenLinePosition.Line != closeParenLinePosition.Line // Multi-lined
+    //             && argumentListSyntax.Arguments.Last() == node
+    //             && !node.GetTrailingTrivia().LastOrDefault().IsKind(SyntaxKind.EndOfLineTrivia))
+    //         {
+    //             SyntaxTrivia newLine = SyntaxTriviaAnalysis.DetermineEndOfLine(node);
+    //             // Moving closing paren to the next line
+    //             node = node.AppendToTrailingTrivia(newLine);
+    //
+    //             ChangesApplied = true;
+    //             // Immediate stop if at least one change was applied
+    //             if (DoAnalysisOnly)
+    //             {
+    //                 return node;
+    //             }
+    //         }
+    //     }
+    //
+    //     return base.VisitArgument(node);
+    // }
 
     // public override SyntaxNode? VisitAwaitExpression(AwaitExpressionSyntax node)
     // {
@@ -329,6 +400,39 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
     //     return base.VisitAwaitExpression(node);
     // }
 
+    private record struct InsertResult(SyntaxNodeOrToken NewLeftPart, SyntaxNodeOrToken NewRightPart);
+
+    /// <summary>
+    /// Trailing trivia is considered until an end of line, after it becomes the leading trivia. During the analysis,
+    /// as we operated on top of the syntax tree, we have to move the result of the trailing trivia to the next expression
+    /// leading trivia to make it compatible.
+    /// Returns <c>null</c> if no changes were applied.
+    /// </summary>
+    private static InsertResult? InsertNewLineWithTrailingTriviaMove(SyntaxNodeOrToken leftPart, SyntaxNodeOrToken rightPart)
+    {
+        SyntaxTriviaList trailingTriviaList = leftPart.GetTrailingTrivia();
+
+        if (trailingTriviaList.Count == 1 && trailingTriviaList[0].IsKind(SyntaxKind.EndOfLineTrivia))
+        {
+            // If the left part already has a new line, then no changes required
+            return null;
+        }
+
+        IEnumerable<SyntaxTrivia> trailingTrivia =
+            trailingTriviaList.SkipWhile(
+                t =>
+                    t.Kind()
+                    is SyntaxKind.WhitespaceTrivia
+                    or SyntaxKind.EndOfLineTrivia
+            );
+
+        SyntaxTrivia newLine = SyntaxTriviaAnalysis.DetermineEndOfLine(leftPart);
+        leftPart = leftPart.WithTrailingTrivia(newLine);
+        rightPart = rightPart.WithLeadingTrivia(trailingTrivia.Concat(rightPart.GetLeadingTrivia()));
+
+        return new InsertResult(leftPart, rightPart);
+    }
+
     private SyntaxNodeOrToken? ReformatLeadingTrivia(
         SyntaxNodeOrToken node,
         string expectedIndentation
@@ -347,6 +451,11 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         (bool changesExist, List<SyntaxTrivia> newLeadingTrivia) = ReformatTrivia(node, expectedIndentation, leadingTrivia);
 
+        if (!changesExist)
+        {
+            return null;
+        }
+
         SyntaxTrivia lastTrivia = newLeadingTrivia.Last();
 
         // It is expected to have the end of line + indent at the end
@@ -358,7 +467,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                 newLeadingTrivia.Add(newLine);
             }
 
-            newLeadingTrivia.Add(SyntaxFactory.Whitespace(expectedIndentation));
+            if (expectedIndentation.Length > 0)
+            {
+                newLeadingTrivia.Add(SyntaxFactory.Whitespace(expectedIndentation));
+            }
         }
 
         if (changesExist)
@@ -374,23 +486,78 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         string expectedIndentation
     )
     {
-        SyntaxTriviaList leadingTrivia = node.GetTrailingTrivia();
-        if (leadingTrivia.Count == 0)
+        SyntaxTriviaList trailingTrivia = node.GetTrailingTrivia();
+        if (trailingTrivia.Count == 0)
         {
             return null;
         }
 
-        (bool changesExist, List<SyntaxTrivia> newLeadingTrivia) = ReformatTrivia(node, expectedIndentation, leadingTrivia);
+        // Trailing trivia is considered until a new line, after the new line it becomes the leading trivia.
+        // The logic enforces a new line before each comment, so in case of the trailing trivia, if there is a comment,
+        // then a new line should be placed in front to move trivia into the leading trivia.
+        // The reformatting logic will fix the indentation later
+
+        int commentIndex =
+            trailingTrivia
+                .IndexOf(
+                    static t =>
+                        t.Kind()
+                            is SyntaxKind.SingleLineCommentTrivia
+                            or SyntaxKind.MultiLineCommentTrivia
+                );
+
+        int endOfLineIndex = trailingTrivia.IndexOf(static t => t.IsKind(SyntaxKind.EndOfLineTrivia));
+
+        if (commentIndex != -1
+            && (commentIndex == 0
+                || !trailingTrivia[commentIndex - 1].IsKind(SyntaxKind.EndOfLineTrivia)
+            )
+            && (endOfLineIndex == -1 || commentIndex < endOfLineIndex)
+        )
+        {
+            SyntaxTrivia newLine = SyntaxTriviaAnalysis.DetermineEndOfLine(node);
+            trailingTrivia = trailingTrivia.Insert(commentIndex, newLine);
+            return node.WithTrailingTrivia(trailingTrivia);
+        }
+
+        // The case when there is trivia between nodes or token but no new line, so the right side is on the same line
+        if (commentIndex == -1 && endOfLineIndex == -1)
+        {
+            return null;
+        }
+
+        (bool changesExist, List<SyntaxTrivia> newTrailingTrivia) = ReformatTrivia(node, expectedIndentation, trailingTrivia);
+
+        if (!changesExist)
+        {
+            return null;
+        }
+
+        if (newTrailingTrivia.Count == 1
+            && newTrailingTrivia[0].IsKind(SyntaxKind.WhitespaceTrivia)
+        )
+        {
+            return node.WithTrailingTrivia(SyntaxTriviaList.Empty);
+        }
+
+        if (newTrailingTrivia.Count == 2
+            && newTrailingTrivia[0].IsKind(SyntaxKind.WhitespaceTrivia)
+            && newTrailingTrivia[1].IsKind(SyntaxKind.EndOfLineTrivia)
+        )
+        {
+            changesExist = true;
+            newTrailingTrivia.RemoveAt(0);
+        }
 
         if (changesExist)
         {
-            return node.WithTrailingTrivia(newLeadingTrivia);
+            return node.WithTrailingTrivia(newTrailingTrivia);
         }
 
         return null;
     }
 
-    private (bool changesExist, List<SyntaxTrivia> newLeadingTrivia) ReformatTrivia(
+    private (bool ChangesExist, List<SyntaxTrivia> NewTrivia) ReformatTrivia(
         SyntaxNodeOrToken node,
         string expectedIndentation,
         SyntaxTriviaList triviaList
@@ -398,12 +565,12 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
     {
         bool changesExist = false;
 
-        List<SyntaxTrivia> newLeadingTrivia =
+        List<SyntaxTrivia> newTrivia =
             triviaList
                 .SelectMany((trivia, index) => CorrectTrivia(trivia, index))
                 .ToList();
 
-        return (changesExist, newLeadingTrivia);
+        return (changesExist, newTrivia);
 
         IEnumerable<SyntaxTrivia> CorrectTrivia(SyntaxTrivia trivia, int index)
         {
@@ -413,6 +580,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                 {
                     changesExist = true;
                     yield return SyntaxFactory.Whitespace(expectedIndentation);
+                    yield break;
                 }
                 yield return trivia;
                 yield break;
@@ -520,24 +688,34 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
     private bool CheckNothingButTriviaInFront(SyntaxNodeOrToken nodeOrToken)
     {
-        if (CheckParentOnTheSameLine(nodeOrToken))
+        SyntaxTree? syntaxTree = nodeOrToken.SyntaxTree;
+        if (syntaxTree is null)
+        {
+            // Cannot analyze the node without a syntax tree.
+            // The case can happen when the parent node was reformatted
+            return false;
+        }
+
+        TextLineCollection textLines = syntaxTree.GetText(_cancellationToken).Lines;
+
+        if (CheckParentOnTheSameLine(textLines, nodeOrToken))
         {
             return false;
         }
 
-        LinePosition nodeLinePosition = _textLines.GetLinePosition(nodeOrToken.SpanStart);
+        LinePosition nodeLinePosition = textLines.GetLinePosition(nodeOrToken.SpanStart);
         if (nodeLinePosition.Character == 0)
         {
             return true;
         }
 
-        bool nothingButWhitespacesInFront = CheckNothingButWhitespacesInFront(nodeOrToken.SpanStart);
+        bool nothingButWhitespacesInFront = CheckNothingButWhitespacesInFront(textLines, nodeOrToken.SpanStart);
         if (nothingButWhitespacesInFront)
         {
             return true;
         }
 
-        if (CheckNothingButMultilineCommentFromParentTrailingTrivia(nodeOrToken))
+        if (CheckNothingButMultilineCommentFromParentTrailingTrivia(syntaxTree, textLines, nodeOrToken))
         {
             return true;
         }
@@ -545,9 +723,9 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         return false;
     }
 
-    private bool CheckParentOnTheSameLine(SyntaxNodeOrToken nodeOrToken)
+    private static bool CheckParentOnTheSameLine(TextLineCollection textLines, SyntaxNodeOrToken nodeOrToken)
     {
-        LinePosition nodeLinePosition = _textLines.GetLinePosition(nodeOrToken.SpanStart);
+        LinePosition nodeLinePosition = textLines.GetLinePosition(nodeOrToken.SpanStart);
 
         SyntaxNode? parent = nodeOrToken.Parent;
         while (parent is not null)
@@ -560,7 +738,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                 continue;
             }
 
-            LinePosition linePosition = _textLines.GetLinePosition(parent.SpanStart);
+            LinePosition linePosition = textLines.GetLinePosition(parent.SpanStart);
             if (linePosition.Line == nodeLinePosition.Line)
             {
                 return true;
@@ -577,9 +755,9 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         return false;
     }
 
-    private bool CheckNothingButWhitespacesInFront(int spanStart)
+    private static bool CheckNothingButWhitespacesInFront(TextLineCollection textLines, int spanStart)
     {
-        TextLine lineText = _textLines.GetLineFromPosition(spanStart);
+        TextLine lineText = textLines.GetLineFromPosition(spanStart);
 
         SourceText? sourceText = lineText.Text;
         if (sourceText == null)
@@ -604,30 +782,46 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         return true;
     }
 
-    private bool CheckNothingButMultilineCommentFromParentTrailingTrivia(SyntaxNodeOrToken nodeOrToken)
+    private static bool CheckNothingButMultilineCommentFromParentTrailingTrivia(
+        SyntaxTree syntaxTree,
+        TextLineCollection textLines,
+        SyntaxNodeOrToken nodeOrToken
+    )
     {
-        if (CheckParentOnTheSameLine(nodeOrToken))
+        if (CheckParentOnTheSameLine(textLines, nodeOrToken))
         {
             return false;
         }
 
-        LinePosition nodeLinePosition = _textLines.GetLinePosition(nodeOrToken.SpanStart);
+        LinePosition nodeLinePosition = textLines.GetLinePosition(nodeOrToken.SpanStart);
 
         TextSpan span = new(nodeOrToken.SpanStart - nodeLinePosition.Character, nodeLinePosition.Character);
-        IEnumerable<SyntaxTrivia> descendantTrivia = _syntaxTree.GetRoot().DescendantTrivia(span);
+        IEnumerable<SyntaxTrivia> descendantTrivia = syntaxTree.GetRoot().DescendantTrivia(span);
 
         SyntaxTrivia parentTrivia =
             descendantTrivia.FirstOrDefault(
                 trivia =>
                 {
-                    LinePosition linePositionStart = _textLines.GetLinePosition(trivia.SpanStart);
-                    LinePosition linePositionEnd = _textLines.GetLinePosition(trivia.Span.End);
+                    LinePosition linePositionStart = textLines.GetLinePosition(trivia.SpanStart);
+                    LinePosition linePositionEnd = textLines.GetLinePosition(trivia.Span.End);
                     return linePositionStart.Line != nodeLinePosition.Line
                         && linePositionEnd.Line == nodeLinePosition.Line;
                 }
             );
 
         return parentTrivia != default;
+    }
+
+    private bool CheckOnTheSameLine(SyntaxTree syntaxTree, SyntaxNodeOrToken left, SyntaxNodeOrToken right)
+    {
+        TextLineCollection textLines = syntaxTree.GetText(_cancellationToken).Lines;
+
+        LinePosition openParenLinePosition =
+            textLines.GetLinePosition(left.Span.End);
+        LinePosition closeParenLinePosition =
+            textLines.GetLinePosition(right.SpanStart);
+
+        return openParenLinePosition.Line == closeParenLinePosition.Line;
     }
 
     private string GetParentIndentation(SyntaxNodeOrToken nodeOrToken)
@@ -646,4 +840,38 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         return _parentIndentation;
     }
+}
+
+/// <summary>
+/// There are some elements that are kind of virtual wrappers over the real nodes and tokens.
+/// They should be excluded from the check as they are on the same line as the real node.
+/// </summary>
+[SuppressMessage(
+    "Style",
+    "RCS1060",
+    Justification = "The class should be here. It is a part of the analysis logic but extensions can be declared only on file level."
+)]
+file static class SyntaxNodeOrTokenExtensions
+{
+    /// <summary>
+    /// There are some elements that are kind of virtual wrappers over the real nodes and tokens.
+    /// They should be excluded from the check as they are on the same line as the real node.
+    /// </summary>
+    public static bool IsWrapper(this SyntaxNode nodeOrToken) => nodeOrToken.Kind().IsWrapperKind();
+
+    /// <summary>
+    /// There are some elements that are kind of virtual wrappers over the real nodes and tokens.
+    /// They should be excluded from the check as they are on the same line as the real node.
+    /// </summary>
+    public static bool IsWrapper(this SyntaxNodeOrToken nodeOrToken) => nodeOrToken.Kind().IsWrapperKind();
+
+    [SuppressMessage(
+        "Style",
+        "RCS1016",
+        Justification = "It's handier to have this as it is"
+    )]
+    private static bool IsWrapperKind(this SyntaxKind kind)
+        => kind
+            is SyntaxKind.Argument
+            or SyntaxKind.ArgumentList;
 }

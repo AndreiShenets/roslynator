@@ -12,57 +12,34 @@ public class RCS1271FixStructuralHonestyTests :
     AbstractCSharpDiagnosticVerifier<FixStructuralHonestyAnalyzer, FixStructuralHonestyFixProvider>
 {
     public override DiagnosticDescriptor Descriptor { get; } = DiagnosticRules.FixStructuralHonesty;
-
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Test()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             using System;
-//             using System.Threading.Tasks;
 //
-//             int result [|= [|await MyMethodAsync(
-//             // Comment
-//                 async (int a, int b, int c) =>
-//                 {
-//                 // Comment
-//                     return [|await Task.Run(() => 10)|];
-//                         // Comment
-//                 }
-//             )|]|];
+//      [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+//      public async Task Test()
+//      {
+//          await VerifyDiagnosticAndFixAsync(
+//              """
+//              using System;
+//              using System.Threading.Tasks;
 //
-//             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
-//                 => Task.FromResult(1);
+//              int result [|= [|await [|MyMethodAsync(
+//                      1)|]|]|];
 //
-//             //int MyMethod(Func<int> f) => 1;
-//             int MyMethod(Func<int, int, int, int> f) => 1;
-//             int MyMethod2(Func<int, int> f) => 1;
-//             """,
-//             """
-//             using System;
-//             using System.Threading.Tasks;
+//              Task<int> MyMethodAsync(int i)=> Task.FromResult(1);
+//              """,
+//              """
+//              using System;
+//              using System.Threading.Tasks;
 //
-//             int result =
-//                 await MyMethodAsync(
-//                     // Comment
-//                     async (int a, int b, int c) =>
-//                     {
-//                         // Comment
-//                         return await Task.Run(() => 10);
-//                         // Comment
-//                     }
-//                 );
+//              int result =
+//                  await MyMethodAsync(
+//                      1
+//                  );
 //
-//             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
-//                 => Task.FromResult(1);
-//
-//             //int MyMethod(Func<int> f) => 1;
-//             int MyMethod(Func<int, int, int, int> f) => 1;
-//             int MyMethod2(Func<int, int> f) => 1;
-//             """,
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
+//              Task<int> MyMethodAsync(int i)=> Task.FromResult(1);
+//              """,
+//              options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+//          );
+//      }
 
     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
     public async Task AwaitExpression_Method_SingleLine()
@@ -114,7 +91,7 @@ public class RCS1271FixStructuralHonestyTests :
             using System;
             using System.Threading.Tasks;
 
-            int result = 
+            int result =
                 await MyMethodAsync(
                     1
                 );
@@ -126,16 +103,14 @@ public class RCS1271FixStructuralHonestyTests :
     }
 
     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task AwaitExpression_Method_SimpleMultiline_parens_on_the_new_line()
+    public async Task AwaitExpression_Method_SimpleMultiline_to_be_wrapped_and_closing_paren_on_the_same_line()
     {
         await VerifyDiagnosticAndFixAsync(
             """
             using System;
             using System.Threading.Tasks;
 
-            int result [|= 
-                [|await [|MyMethodAsync
-                (
+            int result [|= [|await [|MyMethodAsync(
                     1)|]|]|];
 
             Task<int> MyMethodAsync(int i)=> Task.FromResult(1);
@@ -144,105 +119,171 @@ public class RCS1271FixStructuralHonestyTests :
             using System;
             using System.Threading.Tasks;
 
-            int result = 
-                await MyMethodAsync
-                    (
-                        1
-                    );
-            
-            Task<int> MyMethodAsync(int i)=> Task.FromResult(1);
-            """,
-            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-        );
-    }
-
-    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task AwaitExpression_Method_Multiline_single_lined_parens_on_the_new_line()
-    {
-        await VerifyDiagnosticAndFixAsync(
-            """
-            using System;
-            using System.Threading.Tasks;
-
-            int result [|= 
-                [|await [|MyMethodAsync
-                (1)|]|]|];
-
-            Task<int> MyMethodAsync(int i)=> Task.FromResult(1);
-            """,
-            """
-            using System;
-            using System.Threading.Tasks;
-
-            int result = 
-                await MyMethodAsync
-                    (1);
-            
-            Task<int> MyMethodAsync(int i)=> Task.FromResult(1);
-            """,
-            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-        );
-    }
-
-    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task AwaitExpression_Method_SimpleMultiline()
-    {
-        await VerifyDiagnosticAndFixAsync(
-            """
-            using System;
-            using System.Threading.Tasks;
-
-            int result [|= [|await [|MyMethodAsync(
-                1
-            )|]|]|];
-
-            Task<int> MyMethodAsync(int i)=> Task.FromResult(1);
-            """,
-            """
-            using System;
-            using System.Threading.Tasks;
-
-            int result = 
+            int result =
                 await MyMethodAsync(
                     1
                 );
-            
+
             Task<int> MyMethodAsync(int i)=> Task.FromResult(1);
             """,
             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
     }
 
-    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task AwaitExpression_Method_with_InvocationExpression_on_new_line()
-    {
-        await VerifyDiagnosticAndFixAsync(
-            """
-            using System;
-            using System.Threading.Tasks;
+     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+     public async Task AwaitExpression_Method_SimpleMultiline_parens_on_the_new_line()
+     {
+         await VerifyDiagnosticAndFixAsync(
+             """
+             using System;
+             using System.Threading.Tasks;
 
-            int result [|= [|await 
-            [|MyMethodAsync(
-                1
-            )|]|]|];
+             int result [|=
+                 [|await [|MyMethodAsync
+                 (
+                     1)|]|]|];
 
-            Task<int> MyMethodAsync(int i)=> Task.FromResult(1);
-            """,
-            """
-            using System;
-            using System.Threading.Tasks;
+             Task<int> MyMethodAsync(int i)=> Task.FromResult(1);
+             """,
+             """
+             using System;
+             using System.Threading.Tasks;
 
-            int result = 
-                await 
-                    MyMethodAsync(
-                        1
-                    );
-            
-            Task<int> MyMethodAsync(int i)=> Task.FromResult(1);
-            """,
-            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-        );
-    }
+             int result =
+                 await MyMethodAsync
+                     (
+                         1
+                     );
+
+             Task<int> MyMethodAsync(int i)=> Task.FromResult(1);
+             """,
+             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+         );
+     }
+
+     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+     public async Task AwaitExpression_Method_Multiline_single_lined_parens_on_the_new_line()
+     {
+         await VerifyDiagnosticAndFixAsync(
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             int result [|=
+                 [|await [|MyMethodAsync
+                 (1)|]|]|];
+
+             Task<int> MyMethodAsync(int i)=> Task.FromResult(1);
+             """,
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             int result =
+                 await MyMethodAsync
+                     (1);
+
+             Task<int> MyMethodAsync(int i)=> Task.FromResult(1);
+             """,
+             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+         );
+     }
+
+     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+     public async Task AwaitExpression_Method_SimpleMultiline()
+     {
+         await VerifyDiagnosticAndFixAsync(
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             int result [|= [|await [|MyMethodAsync(
+                 1
+             )|]|]|];
+
+             Task<int> MyMethodAsync(int i)=> Task.FromResult(1);
+             """,
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             int result =
+                 await MyMethodAsync(
+                     1
+                 );
+
+             Task<int> MyMethodAsync(int i)=> Task.FromResult(1);
+             """,
+             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+         );
+     }
+
+     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+     public async Task AwaitExpression_Method_with_InvocationExpression_on_new_line()
+     {
+         await VerifyDiagnosticAndFixAsync(
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             int result [|= [|await
+             [|MyMethodAsync(
+                 1
+             )|]|]|];
+
+             Task<int> MyMethodAsync(int i)=> Task.FromResult(1);
+             """,
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             int result =
+                 await
+                     MyMethodAsync(
+                         1
+                     );
+
+             Task<int> MyMethodAsync(int i)=> Task.FromResult(1);
+             """,
+             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+         );
+     }
+
+     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+     public async Task AwaitExpression_Method_SimpleMultiline_with_simple_comments()
+     {
+         await VerifyDiagnosticAndFixAsync(
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             int result [|= //comment1
+             [|// comment2
+                 await [|MyMethodAsync( // Comment 3
+                     /*comment4*/ 1 /*comment5*/) /*comment 6*/|]|]|];
+
+             Task<int> MyMethodAsync(int i) => Task.FromResult(1);
+             """,
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             int result =
+                 //comment1
+                 // comment2
+                 await MyMethodAsync(
+                     // Comment 3
+                     /*comment4*/
+                     1
+                     /*comment5*/
+                 )
+                 /*comment 6*/;
+
+             Task<int> MyMethodAsync(int i) => Task.FromResult(1);
+             """,
+             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+         );
+     }
 
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
 //     public async Task Fixes_Structural_Honesty_in_case_of_comments()
@@ -2118,9 +2159,14 @@ public class RCS1271FixStructuralHonestyTests :
 //     }
 
     // Parameter list
+    // Parameter list with /* parameter comment */
     // Assignment syntax tests
     // BooleanExpression tests
     // Something after lambda arrow tests
     // Return expression the same way as EqualsExpression
     // AwaitExpression_Method_with_InvocationExpression_on_new_line for chaining
+    // directives in trivia
+    // documentation trivia
+    // Root function call
+    // Call with multiline comment inside of parens but without arguments
 }

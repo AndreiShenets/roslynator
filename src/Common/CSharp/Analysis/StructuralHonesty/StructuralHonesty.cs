@@ -83,10 +83,6 @@ public static class StructuralHonesty
                 ? string.Empty
                 : indentationAnalysis.Indentation.ToString();
 
-        SyntaxTree syntaxTree = node.SyntaxTree;
-        SourceText sourceText = syntaxTree.GetText(cancellationToken);
-        TextLineCollection textLines = sourceText.Lines;
-
-        return new StructuralHonestySyntaxRewriter(syntaxTree, textLines, parentIndentation, singleIndentation, cancellationToken);
+        return new StructuralHonestySyntaxRewriter(parentIndentation, singleIndentation, cancellationToken);
     }
 }
