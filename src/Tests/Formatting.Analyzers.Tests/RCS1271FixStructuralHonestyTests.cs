@@ -91,7 +91,7 @@ public class RCS1271FixStructuralHonestyTests :
             using System;
             using System.Threading.Tasks;
 
-            int result =
+            int result = 
                 await MyMethodAsync(
                     1
                 );
@@ -119,7 +119,7 @@ public class RCS1271FixStructuralHonestyTests :
             using System;
             using System.Threading.Tasks;
 
-            int result =
+            int result = 
                 await MyMethodAsync(
                     1
                 );
@@ -197,9 +197,9 @@ public class RCS1271FixStructuralHonestyTests :
              using System;
              using System.Threading.Tasks;
 
-             int result [|= [|await [|MyMethodAsync(
+             int result [|= await MyMethodAsync(
                  1
-             )|]|]|];
+             )|];
 
              Task<int> MyMethodAsync(int i)=> Task.FromResult(1);
              """,
@@ -207,7 +207,7 @@ public class RCS1271FixStructuralHonestyTests :
              using System;
              using System.Threading.Tasks;
 
-             int result =
+             int result = 
                  await MyMethodAsync(
                      1
                  );
@@ -237,7 +237,7 @@ public class RCS1271FixStructuralHonestyTests :
              using System;
              using System.Threading.Tasks;
 
-             int result =
+             int result = 
                  await
                      MyMethodAsync(
                          1
@@ -268,14 +268,11 @@ public class RCS1271FixStructuralHonestyTests :
              using System;
              using System.Threading.Tasks;
 
-             int result =
-                 //comment1
+             int result = //comment1
                  // comment2
-                 await MyMethodAsync(
-                     // Comment 3
+                 await MyMethodAsync( // Comment 3
                      /*comment4*/
-                     1
-                     /*comment5*/
+                     1 /*comment5*/
                  ) /*comment 6*/; //comment7
 
              Task<int> MyMethodAsync(int i) => Task.FromResult(1);
