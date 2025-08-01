@@ -2515,16 +2515,9 @@ public static class SyntaxExtensions
 
         SyntaxTree syntaxTree = node.SyntaxTree;
 
-        if (syntaxTree is not null)
-        {
-            TextSpan span = GetSpan(node, includeExteriorTrivia, trim);
+        TextSpan span = GetSpan(node, includeExteriorTrivia, trim);
 
-            return syntaxTree.IsSingleLineSpan(span, cancellationToken);
-        }
-        else
-        {
-            return false;
-        }
+        return syntaxTree.IsSingleLineSpan(span, cancellationToken);
     }
 
     internal static bool IsMultiLine(
@@ -2538,38 +2531,42 @@ public static class SyntaxExtensions
 
         SyntaxTree syntaxTree = node.SyntaxTree;
 
-        if (syntaxTree is not null)
-        {
-            TextSpan span = GetSpan(node, includeExteriorTrivia, trim);
+        TextSpan span = GetSpan(node, includeExteriorTrivia, trim);
 
-            return syntaxTree.IsMultiLineSpan(span, cancellationToken);
-        }
-        else
-        {
-            return false;
-        }
+        return syntaxTree.IsMultiLineSpan(span, cancellationToken);
     }
 
     internal static TextSpan GetSpan(
         this SyntaxNode node,
         bool includeExteriorTrivia = true,
-        bool trim = true)
+        bool trim = true
+    )
     {
-        return TextSpan.FromBounds(
-            GetStartIndex(node, includeExteriorTrivia, trim),
-            GetEndIndex(node, includeExteriorTrivia, trim));
+        return GetSpan((SyntaxNodeOrToken)node, includeExteriorTrivia, trim);
     }
 
-    private static int GetStartIndex(SyntaxNode node, bool includeExteriorTrivia, bool trim)
+    internal static TextSpan GetSpan(
+        this SyntaxNodeOrToken nodeOrToken,
+        bool includeExteriorTrivia = true,
+        bool trim = true
+    )
+    {
+        return TextSpan.FromBounds(
+            GetStartIndex(nodeOrToken, includeExteriorTrivia, trim),
+            GetEndIndex(nodeOrToken, includeExteriorTrivia, trim)
+        );
+    }
+
+    private static int GetStartIndex(SyntaxNodeOrToken nodeOrToken, bool includeExteriorTrivia, bool trim)
     {
         if (!includeExteriorTrivia)
-            return node.SpanStart;
+            return nodeOrToken.SpanStart;
 
-        int start = node.FullSpan.Start;
+        int start = nodeOrToken.FullSpan.Start;
 
         if (trim)
         {
-            SyntaxTriviaList leading = node.GetLeadingTrivia();
+            SyntaxTriviaList leading = nodeOrToken.GetLeadingTrivia();
 
             for (int i = 0; i < leading.Count; i++)
             {
@@ -2583,16 +2580,16 @@ public static class SyntaxExtensions
         return start;
     }
 
-    private static int GetEndIndex(SyntaxNode node, bool includeExteriorTrivia, bool trim)
+    private static int GetEndIndex(SyntaxNodeOrToken nodeOrToken, bool includeExteriorTrivia, bool trim)
     {
         if (!includeExteriorTrivia)
-            return node.Span.End;
+            return nodeOrToken.Span.End;
 
-        int end = node.FullSpan.End;
+        int end = nodeOrToken.FullSpan.End;
 
         if (trim)
         {
-            SyntaxTriviaList trailing = node.GetTrailingTrivia();
+            SyntaxTriviaList trailing = nodeOrToken.GetTrailingTrivia();
 
             for (int i = trailing.Count - 1; i >= 0; i--)
             {

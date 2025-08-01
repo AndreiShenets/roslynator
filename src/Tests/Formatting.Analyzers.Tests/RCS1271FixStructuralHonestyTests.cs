@@ -311,7 +311,7 @@ public class RCS1271FixStructuralHonestyTests :
              comment17*/ /*comment18
              comment19*/)|]|]|];
 
-             Task<int> MyMethodAsync(int i, int i2, i3) => Task.FromResult(1);
+             Task<int> MyMethodAsync(int i, int i2, int i3) => Task.FromResult(1);
              """,
              """
              using System;
@@ -344,7 +344,7 @@ public class RCS1271FixStructuralHonestyTests :
                  comment19*/
                  );
              
-             Task<int> MyMethodAsync(int i, int i2, i3) => Task.FromResult(1);
+             Task<int> MyMethodAsync(int i, int i2, int i3) => Task.FromResult(1);
              """,
              options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
          );

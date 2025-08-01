@@ -98,7 +98,84 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             }
         }
 
+        SyntaxNode? newNode = EnsureMultilineChildrenSeparatedWithNewLine(node);
+        if (newNode is not null)
+        {
+            node = newNode;
+            _indentationCache[node] = expectedIndentation;
+
+            ChangesApplied = true;
+            // Immediate stop if at least one change was applied
+            if (DoAnalysisOnly)
+            {
+                return node;
+            }
+        }
+
         return base.Visit(node);
+    }
+
+    private SyntaxNode? EnsureMultilineChildrenSeparatedWithNewLine(SyntaxNode node)
+    {
+        ChildSyntaxList children = node.ChildNodesAndTokens();
+        if (children.Count < 2)
+        {
+            // Nothing to change
+            return null;
+        }
+
+        bool changesExist = false;
+
+        for (int i = 0; i < children.Count - 1; i++)
+        {
+            SyntaxNodeOrToken child = children[i];
+            SyntaxNodeOrToken nextChild = children[i + 1];
+
+            bool onTheSameLine = CheckOnTheSameLine(node.SyntaxTree, child.Span, nextChild.Span);
+            bool nextChildIsMultiline = nextChild.GetSpan().IsMultiLine(node.SyntaxTree, _cancellationToken);
+
+            if (onTheSameLine && nextChildIsMultiline)
+            {
+                if (child.IsNode)
+                {
+                    SyntaxNode childAsNode = child.AsNode()!;
+
+                    node =
+                        node.ReplaceNode(
+                            childAsNode,
+                            childAsNode.WithTrailingTrivia(
+                                child.GetTrailingTrivia().Append(_newLine)
+                            )
+                        );
+                }
+                else
+                {
+                    SyntaxToken childAsToken = child.AsToken();
+
+                    node =
+                        node.ReplaceToken(
+                            childAsToken,
+                            childAsToken.WithTrailingTrivia(
+                                child.GetTrailingTrivia().Append(_newLine)
+                            )
+                        );
+                }
+
+                changesExist = true;
+                // Immediate stop if at least one change was applied
+                if (DoAnalysisOnly)
+                {
+                    return node;
+                }
+            }
+        }
+
+        if (changesExist)
+        {
+            return node;
+        }
+
+        return null;
     }
 
     public override SyntaxToken VisitToken(SyntaxToken token)
@@ -134,34 +211,34 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         return base.VisitToken(token);
     }
 
-    public override SyntaxNode? VisitEqualsValueClause(EqualsValueClauseSyntax node)
-    {
-        bool equalsTokenAndValueOnDifferentLines = !CheckOnTheSameLine(node.SyntaxTree, node.EqualsToken, node.Value);
-
-        // Either the equals token and value are on the different lines
-        if (equalsTokenAndValueOnDifferentLines
-            // Or they are on the same line, but the value is single-lined
-            || node.Value.IsSingleLine(cancellationToken: _cancellationToken)
-        )
-        {
-            return base.VisitEqualsValueClause(node);
-        }
-
-        SyntaxToken newEqualsToken =
-            node.EqualsToken.WithTrailingTrivia(
-                node.EqualsToken.TrailingTrivia.Append(_newLine)
-            );
-        node = node.WithEqualsToken(newEqualsToken);
-
-        ChangesApplied = true;
-        // Immediate stop if at least one change was applied
-        if (DoAnalysisOnly)
-        {
-            return node;
-        }
-
-        return base.VisitEqualsValueClause(node);
-    }
+    // public override SyntaxNode? VisitEqualsValueClause(EqualsValueClauseSyntax node)
+    // {
+    //     bool equalsTokenAndValueOnDifferentLines = !CheckOnTheSameLine(node.SyntaxTree, node.EqualsToken, node.Value);
+    //
+    //     // Either the equals token and value are on the different lines
+    //     if (equalsTokenAndValueOnDifferentLines
+    //         // Or they are on the same line, but the value is single-lined
+    //         || node.Value.IsSingleLine(cancellationToken: _cancellationToken)
+    //     )
+    //     {
+    //         return base.VisitEqualsValueClause(node);
+    //     }
+    //
+    //     SyntaxToken newEqualsToken =
+    //         node.EqualsToken.WithTrailingTrivia(
+    //             node.EqualsToken.TrailingTrivia.Append(_newLine)
+    //         );
+    //     node = node.WithEqualsToken(newEqualsToken);
+    //
+    //     ChangesApplied = true;
+    //     // Immediate stop if at least one change was applied
+    //     if (DoAnalysisOnly)
+    //     {
+    //         return node;
+    //     }
+    //
+    //     return base.VisitEqualsValueClause(node);
+    // }
 
     // public override SyntaxNode? VisitAssignmentExpression(AssignmentExpressionSyntax node)
     // {
@@ -195,7 +272,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         bool openParenOnTheNewLine = false;
 
         // A pervert case when someone placed the open paren to the new line
-        // Indentation must be adjusted
+        // Indentation reference must be adjusted
         if (CheckNothingButTriviaInFront(node.OpenParenToken))
         {
             openParenOnTheNewLine = true;
@@ -203,7 +280,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             _indentationCache[node] = increasedParentIndentation;
         }
 
-        if (CheckOnTheSameLine(node.SyntaxTree, node.OpenParenToken, node.CloseParenToken))
+        if (CheckOnTheSameLine(node.SyntaxTree, node.OpenParenToken.Span, node.CloseParenToken.Span))
         {
             return base.VisitArgumentList(node);
         }
@@ -252,7 +329,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                 }
             }
 
-            // Updating indentation reference
+            // Updating indentation reference again as node has been changed
             if (openParenOnTheNewLine)
             {
                 _indentationCache[node] = increasedParentIndentation;
@@ -425,7 +502,11 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         IEnumerable<SyntaxTrivia> CorrectTrivia(SyntaxTrivia trivia, int index)
         {
-            if (trivia.IsKind(SyntaxKind.WhitespaceTrivia))
+            if (trivia.IsKind(SyntaxKind.WhitespaceTrivia)
+                && (index == 0
+                    || triviaList[index - 1].IsKind(SyntaxKind.EndOfLineTrivia)
+                )
+            )
             {
                 if (trivia.Span.Length != expectedIndentation.Length)
                 {
@@ -444,6 +525,13 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                 && (index == 0 || !triviaList[index - 1].IsKind(SyntaxKind.WhitespaceTrivia))
             )
             {
+                if (index > 0
+                    && !triviaList[index - 1].IsKind(SyntaxKind.EndOfLineTrivia)
+                )
+                {
+                    yield return _newLine;
+                }
+
                 changesExist = true;
                 yield return SyntaxFactory.Whitespace(expectedIndentation);
             }
@@ -671,8 +759,8 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         return parentTrivia != default;
     }
 
-    private bool CheckOnTheSameLine(SyntaxTree syntaxTree, SyntaxNodeOrToken left, SyntaxNodeOrToken right)
-        => CheckOnTheSameLine(syntaxTree, left.Span.End, right.Span.Start);
+    private bool CheckOnTheSameLine(SyntaxTree syntaxTree, TextSpan left, TextSpan right)
+        => CheckOnTheSameLine(syntaxTree, left.End, right.Start);
 
     private bool CheckOnTheSameLine(SyntaxTree syntaxTree, int leftPosition, int rightPosition)
     {
