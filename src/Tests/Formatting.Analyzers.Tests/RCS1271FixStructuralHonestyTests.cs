@@ -260,7 +260,7 @@ public class RCS1271FixStructuralHonestyTests :
              int result [|= //comment1
              [|// comment2
                  await [|MyMethodAsync( // Comment 3
-                     /*comment4*/ 1 /*comment5*/) /*comment 6*/|]|]|];
+                     /*comment4*/ 1 /*comment5*/) /*comment 6*/|]|]|]; //comment7
 
              Task<int> MyMethodAsync(int i) => Task.FromResult(1);
              """,
@@ -276,8 +276,7 @@ public class RCS1271FixStructuralHonestyTests :
                      /*comment4*/
                      1
                      /*comment5*/
-                 )
-                 /*comment 6*/;
+                 ) /*comment 6*/; //comment7
 
              Task<int> MyMethodAsync(int i) => Task.FromResult(1);
              """,

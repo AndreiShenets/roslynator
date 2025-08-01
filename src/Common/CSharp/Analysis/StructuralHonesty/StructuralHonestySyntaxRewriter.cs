@@ -18,6 +18,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
     private readonly string _parentIndentation;
     private readonly string _singleIndentation;
+    private readonly SyntaxTrivia _newLine;
     private readonly CancellationToken _cancellationToken;
 
     private readonly Dictionary<SyntaxNode, string> _indentationCache = [];
@@ -28,11 +29,13 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
     public StructuralHonestySyntaxRewriter(
         string parentIndentation,
         string singleIndentation,
+        SyntaxTrivia newLine,
         CancellationToken cancellationToken
     )
     {
         _parentIndentation = parentIndentation;
         _singleIndentation = singleIndentation;
+        _newLine = newLine;
         _cancellationToken = cancellationToken;
     }
 
@@ -50,6 +53,8 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             return node;
         }
 
+        // There are some elements that are kind of virtual wrappers over the real nodes and tokens.
+        // They should be excluded from the check as they are on the same line as the real node.
         if (node.IsWrapper())
         {
             return base.Visit(node);
@@ -65,28 +70,62 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         // Otherwise, each deeper level will have an additional unexpected indentation.
         // We still have to try to format trivia as the single line breakdown to multiple lines
         // and comment reformatting are still possible.
+
         bool nothingButTriviaInFront = CheckNothingButTriviaInFront(node);
-
         string expectedIndentation = GetParentIndentation(node) + _singleIndentation;
-        SyntaxNodeOrToken? newNodeOrToken = ReformatLeadingTrivia(node, expectedIndentation);
 
-        // Are there changes?
-        if (newNodeOrToken is not null)
+        // Immediately add the current node expected indentation to the cache
+        // After reformatting a parent node might be lost
+        if (nothingButTriviaInFront)
         {
-            node = newNodeOrToken.Value.AsNode()!;
+            _indentationCache[node] = expectedIndentation;
+        }
+
+        // Trailing trivia is considered until the end of a line.
+        // Whatever is after should become the leading of the next token trivia and be moved to a new line.
+        SyntaxNode? newNode = MoveChildrenTrailingCommentsToLeadingComments(node);
+        // Are there changes?
+        if (newNode is not null)
+        {
+            node = newNode;
+            _indentationCache[node] = expectedIndentation;
 
             ChangesApplied = true;
             // Immediate stop if at least one change was applied
             if (DoAnalysisOnly)
             {
                 return node;
+            }
+        }
+
+        SyntaxNodeOrToken? newNodeOrToken;
+
+        // Although ReformatLeadingTrivia also checks for nothing but trivia in front, the trivia moving logic above can
+        // erase the parent, which might prevent from doing a proper check inside the method.
+        if (nothingButTriviaInFront)
+        {
+            newNodeOrToken = ReformatLeadingTrivia(node, expectedIndentation);
+            // Are there changes?
+            if (newNodeOrToken is not null)
+            {
+                node = newNodeOrToken.Value.AsNode()!;
+                _indentationCache[node] = expectedIndentation;
+
+                ChangesApplied = true;
+                // Immediate stop if at least one change was applied
+                if (DoAnalysisOnly)
+                {
+                    return node;
+                }
             }
         }
 
         newNodeOrToken = ReformatTrailingTrivia(node, expectedIndentation);
+        // Are there changes?
         if (newNodeOrToken is not null)
         {
             node = newNodeOrToken.Value.AsNode()!;
+            _indentationCache[node] = expectedIndentation;
 
             ChangesApplied = true;
             // Immediate stop if at least one change was applied
@@ -94,11 +133,6 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             {
                 return node;
             }
-        }
-
-        if (nothingButTriviaInFront)
-        {
-            _indentationCache[node] = expectedIndentation;
         }
 
         return base.Visit(node);
@@ -118,27 +152,21 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
     public override SyntaxNode? VisitEqualsValueClause(EqualsValueClauseSyntax node)
     {
-        // Value is single-lined and on the same line as the equals token
-        if (node.Value.IsSingleLine(cancellationToken: _cancellationToken)
-            && CheckOnTheSameLine(node.SyntaxTree, node.EqualsToken, node.Value)
+        bool equalsTokenAndValueOnDifferentLines = !CheckOnTheSameLine(node.SyntaxTree, node.EqualsToken, node.Value);
+
+        // Either the equals token and value are on the different lines
+        if (equalsTokenAndValueOnDifferentLines
+            // Or they are on the same line, but the value is single-lined
+            || node.Value.IsSingleLine(cancellationToken: _cancellationToken)
         )
         {
             return base.VisitEqualsValueClause(node);
         }
 
-        InsertResult? insertResult = InsertNewLineWithTrailingTriviaMove(node.EqualsToken, node.Value);
-
-        // No changes
-        if (insertResult is null)
-        {
-            return base.VisitEqualsValueClause(node);
-        }
-
-        node =
-            node.Update(
-                insertResult.Value.NewLeftPart.AsToken(),
-                (ExpressionSyntax)insertResult.Value.NewRightPart.AsNode()!
-            );
+        // By this time trailing trivia shouldn't have comments. The only possible cases are whitespaces as
+        // the check above also guarantees that the value is on the same line that the equals token.
+        SyntaxToken newEqualsToken = node.EqualsToken.WithTrailingTrivia(_newLine);
+        node = node.WithEqualsToken(newEqualsToken);
 
         ChangesApplied = true;
         // Immediate stop if at least one change was applied
@@ -269,47 +297,33 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             if (node.Arguments.Count > 0)
             {
                 ArgumentSyntax lastArgument = node.Arguments.Last();
-                InsertResult? insertResult = InsertNewLineWithTrailingTriviaMove(lastArgument, node.CloseParenToken);
-                if (insertResult is not null)
-                {
-                    node =
-                        node.Update(
-                            node.OpenParenToken,
-                            node.Arguments.Replace(
-                                lastArgument,
-                                (ArgumentSyntax)insertResult.Value.NewLeftPart.AsNode()!
-                            ),
-                            insertResult.Value.NewRightPart.AsToken()
-                        );
+                ArgumentSyntax newLastArgument = lastArgument.WithTrailingTrivia(_newLine);
+                node =
+                    node.Update(
+                        node.OpenParenToken,
+                        node.Arguments.Replace(lastArgument, newLastArgument),
+                        node.CloseParenToken
+                    );
 
-                    ChangesApplied = true;
-                    // Immediate stop if at least one change was applied
-                    if (DoAnalysisOnly)
-                    {
-                        return node;
-                    }
+                ChangesApplied = true;
+                // Immediate stop if at least one change was applied
+                if (DoAnalysisOnly)
+                {
+                    return node;
                 }
             }
             else
             {
                 // If parens are on the different lines but there are no arguments,
                 // then nothing should be in front apart from multiline comments attached to the open paren
-                InsertResult? insertResult = InsertNewLineWithTrailingTriviaMove(node.OpenParenToken, node.CloseParenToken);
-                if (insertResult is not null)
-                {
-                    node =
-                        node.Update(
-                            insertResult.Value.NewLeftPart.AsToken(),
-                            node.Arguments,
-                            insertResult.Value.NewRightPart.AsToken()
-                        );
+                SyntaxToken newOpenToken = node.OpenParenToken.WithTrailingTrivia(_newLine);
+                node = node.Update(newOpenToken, node.Arguments, node.CloseParenToken);
 
-                    ChangesApplied = true;
-                    // Immediate stop if at least one change was applied
-                    if (DoAnalysisOnly)
-                    {
-                        return node;
-                    }
+                ChangesApplied = true;
+                // Immediate stop if at least one change was applied
+                if (DoAnalysisOnly)
+                {
+                    return node;
                 }
             }
         }
@@ -330,7 +344,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
     //             && argumentListSyntax.Arguments.Last() == node
     //             && !node.GetTrailingTrivia().LastOrDefault().IsKind(SyntaxKind.EndOfLineTrivia))
     //         {
-    //             SyntaxTrivia newLine = SyntaxTriviaAnalysis.DetermineEndOfLine(node);
+    //             SyntaxTrivia newLine =(node);
     //             // Moving closing paren to the next line
     //             node = node.AppendToTrailingTrivia(newLine);
     //
@@ -400,21 +414,102 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
     //     return base.VisitAwaitExpression(node);
     // }
 
-    private record struct InsertResult(SyntaxNodeOrToken NewLeftPart, SyntaxNodeOrToken NewRightPart);
+    private readonly struct TriviaMoveResult(SyntaxNodeOrToken newLeftPart, SyntaxNodeOrToken newRightPart)
+    {
+        public readonly SyntaxNodeOrToken NewLeftPart = newLeftPart;
+        public readonly SyntaxNodeOrToken NewRightPart = newRightPart;
+    }
 
-    /// <summary>
-    /// Trailing trivia is considered until an end of line, after it becomes the leading trivia. During the analysis,
-    /// as we operated on top of the syntax tree, we have to move the result of the trailing trivia to the next expression
-    /// leading trivia to make it compatible.
-    /// Returns <c>null</c> if no changes were applied.
-    /// </summary>
-    private static InsertResult? InsertNewLineWithTrailingTriviaMove(SyntaxNodeOrToken leftPart, SyntaxNodeOrToken rightPart)
+    private SyntaxNode? MoveChildrenTrailingCommentsToLeadingComments(SyntaxNode node)
+    {
+        ChildSyntaxList children = node.ChildNodesAndTokens();
+        if (children.All(c => !c.HasTrailingTrivia))
+        {
+            return null;
+        }
+
+        bool hasChanges = false;
+        for (int i = 0; i < children.Count - 1; i++)
+        {
+            SyntaxNodeOrToken child = children[i];
+            SyntaxNodeOrToken nextChild = children[i + 1];
+
+            if (nextChild.AsNode()?.IsSingleLine() is true
+                && CheckOnTheSameLine(node.SyntaxTree, child, nextChild)
+            )
+            {
+                continue;
+            }
+
+            TriviaMoveResult? moveResult = MoveTrailingTriviaToLeadingTrivia(child, nextChild);
+            if (moveResult is not null)
+            {
+                hasChanges = true;
+
+                if (child.IsNode)
+                {
+                    node =
+                        node.ReplaceNode(
+                            child.AsNode()!,
+                            moveResult.Value.NewLeftPart.AsNode()!
+                        );
+                }
+                else if (child.IsToken)
+                {
+                    node =
+                        node.ReplaceToken(
+                            child.AsToken(),
+                            moveResult.Value.NewLeftPart.AsToken()
+                        );
+                }
+
+                // After node replacement all positions are changed and therefore the next child replacement doesn't work.
+                // Updating the link to the next child to fix it
+                children = node.ChildNodesAndTokens();
+                nextChild = children[i + 1];
+
+                if (nextChild.IsNode)
+                {
+                    node =
+                        node.ReplaceNode(
+                            nextChild.AsNode()!,
+                            moveResult.Value.NewRightPart.AsNode()!
+                        );
+                }
+                else if (nextChild.IsToken)
+                {
+                    node =
+                        node.ReplaceToken(
+                            nextChild.AsToken(),
+                            moveResult.Value.NewRightPart.AsToken()
+                        );
+                }
+
+                children = node.ChildNodesAndTokens();
+
+                ChangesApplied = true;
+                // Immediate stop if at least one change was applied
+                if (DoAnalysisOnly)
+                {
+                    return node;
+                }
+            }
+        }
+
+        return hasChanges ? node : null;
+    }
+
+    private TriviaMoveResult? MoveTrailingTriviaToLeadingTrivia(SyntaxNodeOrToken leftPart, SyntaxNodeOrToken rightPart)
     {
         SyntaxTriviaList trailingTriviaList = leftPart.GetTrailingTrivia();
 
-        if (trailingTriviaList.Count == 1 && trailingTriviaList[0].IsKind(SyntaxKind.EndOfLineTrivia))
+        if (trailingTriviaList.Count == 0
+            || (trailingTriviaList.Count == 1
+                && trailingTriviaList[0].Kind() is SyntaxKind.EndOfLineTrivia or SyntaxKind.WhitespaceTrivia
+            )
+        )
         {
-            // If the left part already has a new line, then no changes required
+            // If the left part doesn't have trivia or has just a new line or whitespaces, then no changes required
             return null;
         }
 
@@ -422,15 +517,14 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             trailingTriviaList.SkipWhile(
                 t =>
                     t.Kind()
-                    is SyntaxKind.WhitespaceTrivia
-                    or SyntaxKind.EndOfLineTrivia
+                        is SyntaxKind.WhitespaceTrivia
+                        or SyntaxKind.EndOfLineTrivia
             );
 
-        SyntaxTrivia newLine = SyntaxTriviaAnalysis.DetermineEndOfLine(leftPart);
-        leftPart = leftPart.WithTrailingTrivia(newLine);
+        leftPart = leftPart.WithTrailingTrivia(_newLine);
         rightPart = rightPart.WithLeadingTrivia(trailingTrivia.Concat(rightPart.GetLeadingTrivia()));
 
-        return new InsertResult(leftPart, rightPart);
+        return new TriviaMoveResult(leftPart, rightPart);
     }
 
     private SyntaxNodeOrToken? ReformatLeadingTrivia(
@@ -459,12 +553,21 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         SyntaxTrivia lastTrivia = newLeadingTrivia.Last();
 
         // It is expected to have the end of line + indent at the end
-        if (!lastTrivia.IsKind(SyntaxKind.WhitespaceTrivia))
+        if (lastTrivia.IsKind(SyntaxKind.WhitespaceTrivia))
+        {
+            int preLastTriviaIndex = newLeadingTrivia.Count - 2;
+            if (preLastTriviaIndex >= 0
+                && !newLeadingTrivia[preLastTriviaIndex].IsKind(SyntaxKind.EndOfLineTrivia)
+            )
+            {
+                newLeadingTrivia.Insert(newLeadingTrivia.Count - 1, _newLine);
+            }
+        }
+        else
         {
             if (!lastTrivia.IsKind(SyntaxKind.EndOfLineTrivia))
             {
-                SyntaxTrivia newLine = SyntaxTriviaAnalysis.DetermineEndOfLine(node);
-                newLeadingTrivia.Add(newLine);
+                newLeadingTrivia.Add(_newLine);
             }
 
             if (expectedIndentation.Length > 0)
@@ -492,10 +595,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             return null;
         }
 
-        // Trailing trivia is considered until a new line, after the new line it becomes the leading trivia.
-        // The logic enforces a new line before each comment, so in case of the trailing trivia, if there is a comment,
-        // then a new line should be placed in front to move trivia into the leading trivia.
-        // The reformatting logic will fix the indentation later
+        // By the time of the calling this method, the MoveChildrenTrailingCommentsToLeadingComments(...) in the Visit method
+        // should have already moved all comments to the leading trivia.
+        // If there is a comment in the trailing trivia, then it should be the end of an expression comment, for example
+        // between expression and semicolon.
 
         int commentIndex =
             trailingTrivia
@@ -508,20 +611,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         int endOfLineIndex = trailingTrivia.IndexOf(static t => t.IsKind(SyntaxKind.EndOfLineTrivia));
 
-        if (commentIndex != -1
-            && (commentIndex == 0
-                || !trailingTrivia[commentIndex - 1].IsKind(SyntaxKind.EndOfLineTrivia)
-            )
-            && (endOfLineIndex == -1 || commentIndex < endOfLineIndex)
-        )
-        {
-            SyntaxTrivia newLine = SyntaxTriviaAnalysis.DetermineEndOfLine(node);
-            trailingTrivia = trailingTrivia.Insert(commentIndex, newLine);
-            return node.WithTrailingTrivia(trailingTrivia);
-        }
-
-        // The case when there is trivia between nodes or token but no new line, so the right side is on the same line
-        if (commentIndex == -1 && endOfLineIndex == -1)
+        // If a comment exists, but no the end of a line trivia exists, then leave it as is - no changes required.
+        // There is also the case when there is trivia between nodes or token but no new line, so the right side is on the same line.
+        // That means it doesn't matter if there is a comment or not, no changes are required if no end-of-line trivia exists.
+        if (endOfLineIndex == -1)
         {
             return null;
         }
@@ -563,6 +656,17 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         SyntaxTriviaList triviaList
     )
     {
+        return ReformatTrivia(node, expectedIndentation, expectedIndentation, expectedIndentation, triviaList);
+    }
+
+    private (bool ChangesExist, List<SyntaxTrivia> NewTrivia) ReformatTrivia(
+        SyntaxNodeOrToken node,
+        string firstItemIndentation,
+        string expectedIndentation,
+        string lastItemIndentation,
+        SyntaxTriviaList triviaList
+    )
+    {
         bool changesExist = false;
 
         List<SyntaxTrivia> newTrivia =
@@ -574,12 +678,20 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         IEnumerable<SyntaxTrivia> CorrectTrivia(SyntaxTrivia trivia, int index)
         {
+            string indentation =
+                index switch
+                {
+                    0 => firstItemIndentation,
+                    _ when index == triviaList.Count - 1 => lastItemIndentation,
+                    _ => expectedIndentation
+                };
+
             if (trivia.IsKind(SyntaxKind.WhitespaceTrivia))
             {
-                if (trivia.Span.Length != expectedIndentation.Length)
+                if (trivia.Span.Length != indentation.Length)
                 {
                     changesExist = true;
-                    yield return SyntaxFactory.Whitespace(expectedIndentation);
+                    yield return SyntaxFactory.Whitespace(indentation);
                     yield break;
                 }
                 yield return trivia;
@@ -587,13 +699,13 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             }
 
             // Check if the trivia comments are properly indented
-            if (expectedIndentation.Length > 0
+            if (indentation.Length > 0
                 && trivia.Kind() is SyntaxKind.SingleLineCommentTrivia or SyntaxKind.MultiLineCommentTrivia
                 && (index == 0 || !triviaList[index - 1].IsKind(SyntaxKind.WhitespaceTrivia))
             )
             {
                 changesExist = true;
-                yield return SyntaxFactory.Whitespace(expectedIndentation);
+                yield return SyntaxFactory.Whitespace(indentation);
             }
 
             if (trivia.IsKind(SyntaxKind.MultiLineCommentTrivia)
@@ -612,7 +724,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                     // The trivia on index 0 is already corrected above. Whatever is there is not relevant
                     int minimumCommentIndentation = GetMinimumCommentIndentation(splitContent, startIndex: 1);
 
-                    if (minimumCommentIndentation != expectedIndentation.Length)
+                    if (minimumCommentIndentation != indentation.Length)
                     {
                         int splitContentLastIndex = splitContent.Length - 1;
                         for (int i = 1; i <= splitContentLastIndex; i++)
@@ -627,13 +739,11 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                             int additionalIndentation = currentIndentationLength - minimumCommentIndentation;
                             int endSliceLength = line.Length - minimumCommentIndentation - additionalIndentation;
                             ReadOnlySpan<char> restOfTheLine = line.AsSpan().Slice(line.Length - endSliceLength, endSliceLength);
-                            splitContent[i] = expectedIndentation + restOfTheLine.ToString();
+                            splitContent[i] = indentation + restOfTheLine.ToString();
                         }
 
-                        SyntaxTrivia newLine = SyntaxTriviaAnalysis.DetermineEndOfLine(node);
-
                         changesExist = true;
-                        yield return SyntaxFactory.Comment(string.Join(newLine.ToString(), splitContent));
+                        yield return SyntaxFactory.Comment(string.Join(_newLine.ToString(), splitContent));
                         yield break;
                     }
                 }
@@ -705,6 +815,14 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         LinePosition nodeLinePosition = textLines.GetLinePosition(nodeOrToken.SpanStart);
         if (nodeLinePosition.Character == 0)
+        {
+            return true;
+        }
+
+        SyntaxTriviaList leadingTrivia = nodeOrToken.GetLeadingTrivia();
+        LinePosition trivialLinePosition = textLines.GetLinePosition(leadingTrivia.Span.Start);
+        // Trivia strats at the beginning of the line
+        if (trivialLinePosition != default && trivialLinePosition.Character == 0)
         {
             return true;
         }
@@ -813,13 +931,16 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
     }
 
     private bool CheckOnTheSameLine(SyntaxTree syntaxTree, SyntaxNodeOrToken left, SyntaxNodeOrToken right)
+        => CheckOnTheSameLine(syntaxTree, left.Span.End, right.Span.Start);
+
+    private bool CheckOnTheSameLine(SyntaxTree syntaxTree, int leftPosition, int rightPosition)
     {
         TextLineCollection textLines = syntaxTree.GetText(_cancellationToken).Lines;
 
         LinePosition openParenLinePosition =
-            textLines.GetLinePosition(left.Span.End);
+            textLines.GetLinePosition(leftPosition);
         LinePosition closeParenLinePosition =
-            textLines.GetLinePosition(right.SpanStart);
+            textLines.GetLinePosition(rightPosition);
 
         return openParenLinePosition.Line == closeParenLinePosition.Line;
     }

@@ -83,6 +83,7 @@ public static class StructuralHonesty
                 ? string.Empty
                 : indentationAnalysis.Indentation.ToString();
 
-        return new StructuralHonestySyntaxRewriter(parentIndentation, singleIndentation, cancellationToken);
+        SyntaxTrivia newLine = SyntaxTriviaAnalysis.DetermineEndOfLine(node);
+        return new StructuralHonestySyntaxRewriter(parentIndentation, singleIndentation, newLine, cancellationToken);
     }
 }
