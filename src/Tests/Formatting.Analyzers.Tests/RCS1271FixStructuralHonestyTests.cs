@@ -281,6 +281,75 @@ public class RCS1271FixStructuralHonestyTests :
          );
      }
 
+     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+     public async Task AwaitExpression_Method_SimpleMultiline_with_complex_comments()
+     {
+         await VerifyDiagnosticAndFixAsync(
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             int result [|=  /*comment1
+                 comment2
+             comment3*/ /* comment4
+             comment5
+                 comment6*/ /*comment7
+                 comment8
+             comment9*/ [|await [|MyMethodAsync(/*comment10
+             comment11*/ 1,
+             /*comment12
+             comment13*/ /*comment14
+             comment15*/ 2,
+             // Comment 16,
+             // Comment 17
+             /* 
+             Comment 18
+                Comment 19
+             Comment 20
+             */ 3
+             /*comment16
+             comment17*/ /*comment18
+             comment19*/)|]|]|];
+
+             Task<int> MyMethodAsync(int i, int i2, i3) => Task.FromResult(1);
+             """,
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             int result [|=  /*comment1
+                 comment2
+             comment3*/ /* comment4
+             comment5
+                 comment6*/ /*comment7
+                 comment8
+             comment9*/ 
+                 await MyMethodAsync(/*comment10
+             comment11*/ 
+                     1,
+                     /*comment12
+                     comment13*/ /*comment14
+                     comment15*/ 
+                     2,
+                     // Comment 16,
+                     // Comment 17
+                     /* 
+                     Comment 18
+                        Comment 19
+                     Comment 20
+                     */ 
+                     3
+                 /*comment16
+                 comment17*/ /*comment18
+                 comment19*/
+                 );
+             
+             Task<int> MyMethodAsync(int i, int i2, i3) => Task.FromResult(1);
+             """,
+             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+         );
+     }
+
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
 //     public async Task Fixes_Structural_Honesty_in_case_of_comments()
 //     {

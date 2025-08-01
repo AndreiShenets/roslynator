@@ -98,21 +98,6 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             }
         }
 
-        newNodeOrToken = ReformatTrailingTrivia(node, expectedIndentation);
-        // Are there changes?
-        if (newNodeOrToken is not null)
-        {
-            node = newNodeOrToken.Value.AsNode()!;
-            _indentationCache[node] = expectedIndentation;
-
-            ChangesApplied = true;
-            // Immediate stop if at least one change was applied
-            if (DoAnalysisOnly)
-            {
-                return node;
-            }
-        }
-
         return base.Visit(node);
     }
 
@@ -129,11 +114,9 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         string parentIndentation = GetParentIndentation(token);
 
-        SyntaxNodeOrToken? newNodeOrToken;
-
         if (nothingButTriviaInFront)
         {
-            newNodeOrToken = ReformatLeadingTrivia(token, parentIndentation);
+            SyntaxNodeOrToken? newNodeOrToken = ReformatLeadingTrivia(token, parentIndentation);
             // Are there changes?
             if (newNodeOrToken is not null)
             {
@@ -145,20 +128,6 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                 {
                     return token;
                 }
-            }
-        }
-
-        newNodeOrToken = ReformatTrailingTrivia(token, parentIndentation);
-        // Are there changes?
-        if (newNodeOrToken is not null)
-        {
-            token = newNodeOrToken.Value.AsToken();
-
-            ChangesApplied = true;
-            // Immediate stop if at least one change was applied
-            if (DoAnalysisOnly)
-            {
-                return token;
             }
         }
 
@@ -439,61 +408,9 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         return null;
     }
 
-    private SyntaxNodeOrToken? ReformatTrailingTrivia(
-        SyntaxNodeOrToken node,
-        string expectedIndentation
-    )
-    {
-        SyntaxTriviaList trailingTrivia = node.GetTrailingTrivia();
-        int trailingTriviaCount = trailingTrivia.Count;
-
-        if (trailingTriviaCount == 0
-            || (trailingTriviaCount == 1
-                && trailingTrivia[0].Kind()
-                    is SyntaxKind.EndOfLineTrivia
-                    or SyntaxKind.WhitespaceTrivia
-            )
-            || (trailingTriviaCount == 2
-                && trailingTrivia[0].IsKind(SyntaxKind.WhitespaceTrivia)
-                && trailingTrivia[1].IsKind(SyntaxKind.EndOfLineTrivia)
-            )
-        )
-        {
-            return null;
-        }
-
-        (bool changesExist, List<SyntaxTrivia> newTrailingTrivia) =
-            // Null for indentation means nothing should be changed
-            ReformatTrivia(
-                node,
-                firstItemIndentation: null,
-                expectedIndentation,
-                lastItemIndentation: null,
-                trailingTrivia
-            );
-
-        if (changesExist)
-        {
-            return node.WithTrailingTrivia(newTrailingTrivia);
-        }
-
-        return null;
-    }
-
     private (bool ChangesExist, List<SyntaxTrivia> NewTrivia) ReformatTrivia(
         SyntaxNodeOrToken node,
         string expectedIndentation,
-        SyntaxTriviaList triviaList
-    )
-    {
-        return ReformatTrivia(node, expectedIndentation, expectedIndentation, expectedIndentation, triviaList);
-    }
-
-    private (bool ChangesExist, List<SyntaxTrivia> NewTrivia) ReformatTrivia(
-        SyntaxNodeOrToken node,
-        string? firstItemIndentation,
-        string? expectedIndentation,
-        string? lastItemIndentation,
         SyntaxTriviaList triviaList
     )
     {
@@ -508,26 +425,12 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         IEnumerable<SyntaxTrivia> CorrectTrivia(SyntaxTrivia trivia, int index)
         {
-            string? indentation =
-                index switch
-                {
-                    0 => firstItemIndentation,
-                    _ when index == triviaList.Count - 1 => lastItemIndentation,
-                    _ => expectedIndentation
-                };
-
-            if (indentation is null)
-            {
-                yield return trivia;
-                yield break;
-            }
-
             if (trivia.IsKind(SyntaxKind.WhitespaceTrivia))
             {
-                if (trivia.Span.Length != indentation.Length)
+                if (trivia.Span.Length != expectedIndentation.Length)
                 {
                     changesExist = true;
-                    yield return SyntaxFactory.Whitespace(indentation);
+                    yield return SyntaxFactory.Whitespace(expectedIndentation);
                     yield break;
                 }
 
@@ -536,13 +439,13 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             }
 
             // Check if the trivia comments are properly indented
-            if (indentation.Length > 0
+            if (expectedIndentation.Length > 0
                 && trivia.Kind() is SyntaxKind.SingleLineCommentTrivia or SyntaxKind.MultiLineCommentTrivia
                 && (index == 0 || !triviaList[index - 1].IsKind(SyntaxKind.WhitespaceTrivia))
             )
             {
                 changesExist = true;
-                yield return SyntaxFactory.Whitespace(indentation);
+                yield return SyntaxFactory.Whitespace(expectedIndentation);
             }
 
             if (trivia.IsKind(SyntaxKind.MultiLineCommentTrivia)
@@ -561,7 +464,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                     // The trivia on index 0 is already corrected above. Whatever is there is not relevant
                     int minimumCommentIndentation = GetMinimumCommentIndentation(splitContent, startIndex: 1);
 
-                    if (minimumCommentIndentation != indentation.Length)
+                    if (minimumCommentIndentation != expectedIndentation.Length)
                     {
                         int splitContentLastIndex = splitContent.Length - 1;
                         for (int i = 1; i <= splitContentLastIndex; i++)
@@ -577,7 +480,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                             int endSliceLength = line.Length - minimumCommentIndentation - additionalIndentation;
                             ReadOnlySpan<char> restOfTheLine =
                                 line.AsSpan().Slice(line.Length - endSliceLength, endSliceLength);
-                            splitContent[i] = indentation + restOfTheLine.ToString();
+                            splitContent[i] = expectedIndentation + restOfTheLine.ToString();
                         }
 
                         changesExist = true;
@@ -818,12 +721,6 @@ file static class SyntaxNodeOrTokenExtensions
     /// They should be excluded from the check as they are on the same line as the real node.
     /// </summary>
     public static bool IsWrapper(this SyntaxNode nodeOrToken) => nodeOrToken.Kind().IsWrapperKind();
-
-    /// <summary>
-    /// There are some elements that are kind of virtual wrappers over the real nodes and tokens.
-    /// They should be excluded from the check as they are on the same line as the real node.
-    /// </summary>
-    public static bool IsWrapper(this SyntaxNodeOrToken nodeOrToken) => nodeOrToken.Kind().IsWrapperKind();
 
     [SuppressMessage(
         "Style",
