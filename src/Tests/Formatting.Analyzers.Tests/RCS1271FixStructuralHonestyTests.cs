@@ -317,7 +317,7 @@ public class RCS1271FixStructuralHonestyTests :
              using System;
              using System.Threading.Tasks;
 
-             int result [|=  /*comment1
+             int result =  /*comment1
                  comment2
              comment3*/ /* comment4
              comment5

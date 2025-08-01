@@ -98,85 +98,90 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             }
         }
 
-        SyntaxNode? newNode = EnsureMultilineChildrenSeparatedWithNewLine(node);
-        if (newNode is not null)
-        {
-            node = newNode;
-            _indentationCache[node] = expectedIndentation;
-
-            ChangesApplied = true;
-            // Immediate stop if at least one change was applied
-            if (DoAnalysisOnly)
-            {
-                return node;
-            }
-        }
+        // SyntaxNode? newNode = EnsureMultilineChildrenSeparatedWithNewLine(node);
+        // if (newNode is not null)
+        // {
+        //     node = newNode;
+        //     _indentationCache[node] = expectedIndentation;
+        //
+        //     ChangesApplied = true;
+        //     // Immediate stop if at least one change was applied
+        //     if (DoAnalysisOnly)
+        //     {
+        //         return node;
+        //     }
+        // }
 
         return base.Visit(node);
     }
 
-    private SyntaxNode? EnsureMultilineChildrenSeparatedWithNewLine(SyntaxNode node)
-    {
-        ChildSyntaxList children = node.ChildNodesAndTokens();
-        if (children.Count < 2)
-        {
-            // Nothing to change
-            return null;
-        }
-
-        bool changesExist = false;
-
-        for (int i = 0; i < children.Count - 1; i++)
-        {
-            SyntaxNodeOrToken child = children[i];
-            SyntaxNodeOrToken nextChild = children[i + 1];
-
-            bool onTheSameLine = CheckOnTheSameLine(node.SyntaxTree, child.Span, nextChild.Span);
-            bool nextChildIsMultiline = nextChild.GetSpan().IsMultiLine(node.SyntaxTree, _cancellationToken);
-
-            if (onTheSameLine && nextChildIsMultiline)
-            {
-                if (child.IsNode)
-                {
-                    SyntaxNode childAsNode = child.AsNode()!;
-
-                    node =
-                        node.ReplaceNode(
-                            childAsNode,
-                            childAsNode.WithTrailingTrivia(
-                                child.GetTrailingTrivia().Append(_newLine)
-                            )
-                        );
-                }
-                else
-                {
-                    SyntaxToken childAsToken = child.AsToken();
-
-                    node =
-                        node.ReplaceToken(
-                            childAsToken,
-                            childAsToken.WithTrailingTrivia(
-                                child.GetTrailingTrivia().Append(_newLine)
-                            )
-                        );
-                }
-
-                changesExist = true;
-                // Immediate stop if at least one change was applied
-                if (DoAnalysisOnly)
-                {
-                    return node;
-                }
-            }
-        }
-
-        if (changesExist)
-        {
-            return node;
-        }
-
-        return null;
-    }
+    // private SyntaxNode? EnsureMultilineChildrenSeparatedWithNewLine(SyntaxNode node)
+    // {
+    //     ChildSyntaxList children = node.ChildNodesAndTokens();
+    //     if (children.Count < 2)
+    //     {
+    //         // Nothing to change
+    //         return null;
+    //     }
+    //
+    //     bool changesExist = false;
+    //
+    //     for (int i = 0; i < children.Count - 1; i++)
+    //     {
+    //         SyntaxNodeOrToken child = children[i];
+    //
+    //         SyntaxTriviaList trailingTrivia = child.GetTrailingTrivia();
+    //         if (!trailingTrivia.Any())
+    //         {
+    //             // No trailing trivia, so nothing to do
+    //             continue;
+    //         }
+    //
+    //         SyntaxNodeOrToken nextChild = children[i + 1];
+    //
+    //         if (CheckOnTheSameLine(node.SyntaxTree, trailingTrivia.Span, nextChild.Span))
+    //         {
+    //             if (child.IsNode)
+    //             {
+    //                 SyntaxNode childAsNode = child.AsNode()!;
+    //
+    //                 node =
+    //                     node.ReplaceNode(
+    //                         childAsNode,
+    //                         childAsNode.WithTrailingTrivia(
+    //                             child.GetTrailingTrivia().Append(_newLine)
+    //                         )
+    //                     );
+    //             }
+    //             else
+    //             {
+    //                 SyntaxToken childAsToken = child.AsToken();
+    //
+    //                 node =
+    //                     node.ReplaceToken(
+    //                         childAsToken,
+    //                         childAsToken.WithTrailingTrivia(
+    //                             child.GetTrailingTrivia().Append(_newLine)
+    //                         )
+    //                     );
+    //             }
+    //
+    //             changesExist = true;
+    //             // Immediate stop if at least one change was applied
+    //             if (DoAnalysisOnly)
+    //             {
+    //                 return node;
+    //             }
+    //         }
+    //     }
+    //
+    //     if (changesExist)
+    //     {
+    //         return node;
+    //     }
+    //
+    //     return null;
+    // }
 
     public override SyntaxToken VisitToken(SyntaxToken token)
     {
@@ -208,37 +213,64 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             }
         }
 
+        // Logic to move tokens to the next line if multiline trailing trivia of a previous token is in front
+        SyntaxTree? tokenSyntaxTree = token.SyntaxTree;
+        if (tokenSyntaxTree is not null)
+        {
+            SyntaxTriviaList trailingTrivia = token.TrailingTrivia;
+            if (trailingTrivia.Any() && !trailingTrivia.Last().IsKind(SyntaxKind.EndOfLineTrivia))
+            {
+                TextSpan tokenFullSpan = trailingTrivia.FullSpan;
+
+                SyntaxToken nextToken = token.GetNextToken();
+
+                if (tokenFullSpan.IsMultiLine(tokenSyntaxTree, _cancellationToken)
+                    && CheckOnTheSameLine(tokenSyntaxTree, tokenFullSpan, nextToken.Span)
+                )
+                {
+                    token = token.WithTrailingTrivia(trailingTrivia.Append(_newLine));
+
+                    ChangesApplied = true;
+                    // Immediate stop if at least one change was applied
+                    if (DoAnalysisOnly)
+                    {
+                        return token;
+                    }
+                }
+            }
+        }
+
         return base.VisitToken(token);
     }
 
-    // public override SyntaxNode? VisitEqualsValueClause(EqualsValueClauseSyntax node)
-    // {
-    //     bool equalsTokenAndValueOnDifferentLines = !CheckOnTheSameLine(node.SyntaxTree, node.EqualsToken, node.Value);
-    //
-    //     // Either the equals token and value are on the different lines
-    //     if (equalsTokenAndValueOnDifferentLines
-    //         // Or they are on the same line, but the value is single-lined
-    //         || node.Value.IsSingleLine(cancellationToken: _cancellationToken)
-    //     )
-    //     {
-    //         return base.VisitEqualsValueClause(node);
-    //     }
-    //
-    //     SyntaxToken newEqualsToken =
-    //         node.EqualsToken.WithTrailingTrivia(
-    //             node.EqualsToken.TrailingTrivia.Append(_newLine)
-    //         );
-    //     node = node.WithEqualsToken(newEqualsToken);
-    //
-    //     ChangesApplied = true;
-    //     // Immediate stop if at least one change was applied
-    //     if (DoAnalysisOnly)
-    //     {
-    //         return node;
-    //     }
-    //
-    //     return base.VisitEqualsValueClause(node);
-    // }
+    public override SyntaxNode? VisitEqualsValueClause(EqualsValueClauseSyntax node)
+    {
+        bool equalsTokenAndValueOnDifferentLines = !CheckOnTheSameLine(node.SyntaxTree, node.EqualsToken.Span, node.Value.Span);
+
+        // Either the equals token and value are on the different lines
+        if (equalsTokenAndValueOnDifferentLines
+            // Or they are on the same line, but the value is single-lined
+            || node.Value.IsSingleLine(cancellationToken: _cancellationToken)
+        )
+        {
+            return base.VisitEqualsValueClause(node);
+        }
+
+        SyntaxToken newEqualsToken =
+            node.EqualsToken.WithTrailingTrivia(
+                node.EqualsToken.TrailingTrivia.Append(_newLine)
+            );
+        node = node.WithEqualsToken(newEqualsToken);
+
+        ChangesApplied = true;
+        // Immediate stop if at least one change was applied
+        if (DoAnalysisOnly)
+        {
+            return node;
+        }
+
+        return base.VisitEqualsValueClause(node);
+    }
 
     // public override SyntaxNode? VisitAssignmentExpression(AssignmentExpressionSyntax node)
     // {
