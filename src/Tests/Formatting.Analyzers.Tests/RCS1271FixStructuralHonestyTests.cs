@@ -12,7 +12,7 @@ public class RCS1271FixStructuralHonestyTests :
     AbstractCSharpDiagnosticVerifier<FixStructuralHonestyAnalyzer, FixStructuralHonestyFixProvider>
 {
     public override DiagnosticDescriptor Descriptor { get; } = DiagnosticRules.FixStructuralHonesty;
-//
+
 //      [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
 //      public async Task Test()
 //      {
@@ -329,7 +329,7 @@ public class RCS1271FixStructuralHonestyTests :
                      1,
                      /*comment12
                      comment13*/ /*comment14
-                     comment15*/ 
+                     comment15*/
                      2,
                      // Comment 16,
                      // Comment 17
@@ -337,7 +337,7 @@ public class RCS1271FixStructuralHonestyTests :
                      Comment 18
                         Comment 19
                      Comment 20
-                     */ 
+                     */
                      3
                  /*comment16
                  comment17*/ /*comment18

@@ -595,9 +595,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                                 continue;
                             }
 
-                            int currentIndentationLength = GetIndentationLength(line);
-                            int additionalIndentation = currentIndentationLength - minimumCommentIndentation;
-                            int endSliceLength = line.Length - minimumCommentIndentation - additionalIndentation;
+                            int endSliceLength = line.Length - minimumCommentIndentation;
                             ReadOnlySpan<char> restOfTheLine =
                                 line.AsSpan().Slice(line.Length - endSliceLength, endSliceLength);
                             splitContent[i] = expectedIndentation + restOfTheLine.ToString();
@@ -692,6 +690,17 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         if (nothingButWhitespacesInFront)
         {
             return true;
+        }
+
+        if (nodeOrToken.IsToken)
+        {
+            SyntaxToken previousToken = nodeOrToken.AsToken().GetPreviousToken();
+            if (!previousToken.IsKind(SyntaxKind.None)
+                && CheckOnTheSameLine(syntaxTree, previousToken.Span, nodeOrToken.Span)
+            )
+            {
+                return false;
+            }
         }
 
         if (CheckNothingButMultilineCommentFromParentTrailingTrivia(syntaxTree, textLines, nodeOrToken))
