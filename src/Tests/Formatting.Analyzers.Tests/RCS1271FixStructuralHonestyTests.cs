@@ -339,12 +339,106 @@ public class RCS1271FixStructuralHonestyTests :
                      Comment 20
                      */
                      3
-                 /*comment16
-                 comment17*/ /*comment18
-                 comment19*/
+                     /*comment16
+                     comment17*/ /*comment18
+                     comment19*/
                  );
              
              Task<int> MyMethodAsync(int i, int i2, int i3) => Task.FromResult(1);
+             """,
+             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+         );
+     }
+
+     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+     public async Task AwaitExpression_Method_SimpleMultiline_without_arguments_but_with_trailing_comment()
+     {
+         await VerifyDiagnosticAndFixAsync(
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             int result [|= 
+                 [|await [|MyMethodAsync(/*comment12
+             comment13*/ /*comment14
+             comment15*/
+             // Comment 16,
+             // Comment 17
+             /* 
+             Comment 18
+                Comment 19
+             Comment 20
+             */
+                 )|]|]|];
+
+             Task<int> MyMethodAsync() => Task.FromResult(1);
+             """,
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             int result = 
+                 await MyMethodAsync(/*comment12
+             comment13*/ /*comment14
+             comment15*/
+                     // Comment 16,
+                     // Comment 17
+                     /* 
+                     Comment 18
+                        Comment 19
+                     Comment 20
+                     */
+                 );
+             
+             Task<int> MyMethodAsync() => Task.FromResult(1);
+             """,
+             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+         );
+     }
+
+     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+     public async Task AwaitExpression_Method_SimpleMultiline_without_arguments_but_with_comment()
+     {
+         await VerifyDiagnosticAndFixAsync(
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             int result [|= 
+                 [|await [|MyMethodAsync(
+                     /*comment12
+             comment13*/ /*comment14
+             comment15*/
+             // Comment 16,
+             // Comment 17
+             /* 
+             Comment 18
+                Comment 19
+             Comment 20
+             */
+                 )|]|]|];
+
+             Task<int> MyMethodAsync() => Task.FromResult(1);
+             """,
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             int result = 
+                 await MyMethodAsync(
+                     /*comment12
+                     comment13*/ /*comment14
+                     comment15*/
+                     // Comment 16,
+                     // Comment 17
+                     /* 
+                     Comment 18
+                        Comment 19
+                     Comment 20
+                     */
+                 );
+             
+             Task<int> MyMethodAsync() => Task.FromResult(1);
              """,
              options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
          );
@@ -2233,5 +2327,4 @@ public class RCS1271FixStructuralHonestyTests :
     // directives in trivia
     // documentation trivia
     // Root function call
-    // Call with multiline comment inside of parens but without arguments
 }

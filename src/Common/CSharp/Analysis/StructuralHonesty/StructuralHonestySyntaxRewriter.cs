@@ -198,7 +198,18 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         if (nothingButTriviaInFront)
         {
-            SyntaxNodeOrToken? newNodeOrToken = ReformatLeadingTrivia(token, parentIndentation);
+            string expectedIndentation = parentIndentation;
+
+            if (token.Kind() is SyntaxKind.CloseParenToken or SyntaxKind.CloseBracketToken or SyntaxKind.CloseBraceToken)
+            {
+                // Comments in front of the closing parent, bracket or brace should be additionally indented,
+                // When the closing parent, bracket or brace should be on the parent level
+                expectedIndentation = parentIndentation + _singleIndentation;
+            }
+
+            string expectedLastIndentation = parentIndentation;
+
+            SyntaxNodeOrToken? newNodeOrToken = ReformatLeadingTrivia(token, expectedIndentation, expectedLastIndentation);
             // Are there changes?
             if (newNodeOrToken is not null)
             {
@@ -459,6 +470,15 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         string expectedIndentation
     )
     {
+        return ReformatLeadingTrivia(node, expectedIndentation, expectedIndentation);
+    }
+
+    private SyntaxNodeOrToken? ReformatLeadingTrivia(
+        SyntaxNodeOrToken node,
+        string expectedIndentation,
+        string expectedLastIndentation
+    )
+    {
         if (!CheckNothingButTriviaInFront(node))
         {
             return null;
@@ -467,16 +487,16 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         SyntaxTriviaList leadingTrivia = node.GetLeadingTrivia();
         if (leadingTrivia.Count == 0)
         {
-            if (expectedIndentation.Length == 0)
+            if (expectedLastIndentation.Length == 0)
             {
                 // No leading trivia and no expected indentation, so nothing to do
                 return null;
             }
-            return node.WithLeadingTrivia(SyntaxFactory.Whitespace(expectedIndentation));
+            return node.WithLeadingTrivia(SyntaxFactory.Whitespace(expectedLastIndentation));
         }
 
         (bool changesExist, List<SyntaxTrivia> newLeadingTrivia) =
-            ReformatTrivia(node, expectedIndentation, leadingTrivia);
+            ReformatTrivia(node, expectedIndentation, expectedLastIndentation, leadingTrivia);
 
         if (!changesExist)
         {
@@ -503,9 +523,9 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                 newLeadingTrivia.Add(_newLine);
             }
 
-            if (expectedIndentation.Length > 0)
+            if (expectedLastIndentation.Length > 0)
             {
-                newLeadingTrivia.Add(SyntaxFactory.Whitespace(expectedIndentation));
+                newLeadingTrivia.Add(SyntaxFactory.Whitespace(expectedLastIndentation));
             }
         }
 
@@ -520,10 +540,13 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
     private (bool ChangesExist, List<SyntaxTrivia> NewTrivia) ReformatTrivia(
         SyntaxNodeOrToken node,
         string expectedIndentation,
+        string expectedLastIndentation,
         SyntaxTriviaList triviaList
     )
     {
         bool changesExist = false;
+
+        int lastTriviaIndex = triviaList.Count - 1;
 
         List<SyntaxTrivia> newTrivia =
             triviaList
@@ -540,10 +563,15 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                 )
             )
             {
-                if (trivia.Span.Length != expectedIndentation.Length)
+                string indentation =
+                    index == lastTriviaIndex
+                        ? expectedLastIndentation
+                        : expectedIndentation;
+
+                if (trivia.Span.Length != indentation.Length)
                 {
                     changesExist = true;
-                    yield return SyntaxFactory.Whitespace(expectedIndentation);
+                    yield return SyntaxFactory.Whitespace(indentation);
                     yield break;
                 }
 
