@@ -74,6 +74,49 @@ public class RCS1271FixStructuralHonestyTests :
     }
 
     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task AwaitExpression_Method_SingleLine_next_line_formatted()
+    {
+        await VerifyNoDiagnosticAsync(
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            int result = 
+                await MyMethodAsync();
+
+            Task<int> MyMethodAsync() => Task.FromResult(1);
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task AwaitExpression_Method_SingleLine_next_line()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            int result [|= 
+            [|await MyMethodAsync()|]|];
+
+            Task<int> MyMethodAsync() => Task.FromResult(1);
+            """,
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            int result = 
+                await MyMethodAsync();
+
+            Task<int> MyMethodAsync() => Task.FromResult(1);
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
     public async Task AwaitExpression_Method_SimpleMultiline_closing_paren_on_the_same_line()
     {
         await VerifyDiagnosticAndFixAsync(
@@ -439,6 +482,69 @@ public class RCS1271FixStructuralHonestyTests :
                  );
              
              Task<int> MyMethodAsync() => Task.FromResult(1);
+             """,
+             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+         );
+     }
+
+     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+     public async Task AwaitExpression_Method_with_lambda_parameter_single_line_after_assignment()
+     {
+         await VerifyNoDiagnosticAsync(
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             int result = await MyMethodAsync(async (int a, int b, int c) => await Task.Run(() => 10)); 
+
+             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
+                 => Task.FromResult(1);
+             """,
+             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+         );
+     }
+
+     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+     public async Task AwaitExpression_Method_with_lambda_parameter_single_line_next_after_assignment_formatted()
+     {
+         await VerifyNoDiagnosticAsync(
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             int result = 
+                 await MyMethodAsync(async (int a, int b, int c) => await Task.Run(() => 10)); 
+
+             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
+                 => Task.FromResult(1);
+             """,
+             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+         );
+     }
+
+     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+     public async Task AwaitExpression_Method_with_lambda_parameter_single_line_next_after_assignment()
+     {
+         await VerifyDiagnosticAndFixAsync(
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             int result [|= 
+             [|await MyMethodAsync(async (int a, int b, int c) => await Task.Run(() => 10))|]|]; 
+
+             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
+                 => Task.FromResult(1);
+             """,
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             int result = 
+                 await MyMethodAsync(async (int a, int b, int c) => await Task.Run(() => 10)); 
+             
+             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
+                 => Task.FromResult(1);
              """,
              options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
          );
