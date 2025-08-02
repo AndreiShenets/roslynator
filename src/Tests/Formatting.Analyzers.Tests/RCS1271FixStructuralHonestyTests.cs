@@ -505,6 +505,22 @@ public class RCS1271FixStructuralHonestyTests :
      }
 
      [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+     public async Task AwaitExpression_Method_with_simple_lambda_parameter_single_line_after_assignment()
+     {
+         await VerifyNoDiagnosticAsync(
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             int result = await MyMethodAsync(() => 10); 
+
+             Task<int> MyMethodAsync(Func<int> f) => Task.FromResult(1);
+             """,
+             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+         );
+     }
+
+     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
      public async Task AwaitExpression_Method_with_lambda_parameter_single_line_next_after_assignment_formatted()
      {
          await VerifyNoDiagnosticAsync(
@@ -516,6 +532,24 @@ public class RCS1271FixStructuralHonestyTests :
                  await MyMethodAsync(async (int a, int b, int c) => await Task.Run(() => 10)); 
 
              Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
+                 => Task.FromResult(1);
+             """,
+             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+         );
+     }
+
+     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+     public async Task AwaitExpression_Method_with_simple_async_lambda_parameter_single_line_next_after_assignment_formatted()
+     {
+         await VerifyNoDiagnosticAsync(
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             int result = 
+                 await MyMethodAsync(async () => await Task.Run(() => 10)); 
+
+             Task<int> MyMethodAsync(Func<Task<int>> f)
                  => Task.FromResult(1);
              """,
              options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
@@ -543,6 +577,128 @@ public class RCS1271FixStructuralHonestyTests :
              int result = 
                  await MyMethodAsync(async (int a, int b, int c) => await Task.Run(() => 10)); 
              
+             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
+                 => Task.FromResult(1);
+             """,
+             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+         );
+     }
+
+     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+     public async Task AwaitExpression_top_level_Method_with_lambda_parameter()
+     {
+         await VerifyNoDiagnosticAsync(
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             await MyMethodAsync(async (int a, int b, int c) => await Task.Run(() => 10));
+
+             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
+                 => Task.FromResult(1);
+             """,
+             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+         );
+     }
+
+     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+     public async Task AwaitExpression_top_level_multiline_Method_with_lambda_parameter()
+     {
+         await VerifyNoDiagnosticAsync(
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             await MyMethodAsync(async (int a, int b, int c) => await Task.Run(() => 10));
+
+             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
+                 => Task.FromResult(1);
+             """,
+             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+         );
+     }
+
+     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+     public async Task AwaitExpression_top_level_multiline_Method_with_single_line_lambda_parameter_on_next_line()
+     {
+         await VerifyDiagnosticAndFixAsync(
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             [|await MyMethodAsync(
+             [|async (int a, int b, int c) => await Task.Run(() => 10)|]
+             )|];
+
+             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
+                 => Task.FromResult(1);
+             """,
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             await MyMethodAsync(
+                 async (int a, int b, int c) => await Task.Run(() => 10)
+             );
+
+             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
+                 => Task.FromResult(1);
+             """,
+             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+         );
+     }
+
+     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+     public async Task AwaitExpression_top_level_multiline_Method_with_single_line_simple_lambda_parameter_on_next_line()
+     {
+         await VerifyDiagnosticAndFixAsync(
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             [|await MyMethodAsync(
+             [|() => 10|]
+             )|];
+
+             int MyMethodAsync(Func<int> f) => 1;
+             """,
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             await MyMethodAsync(
+                 () => 10
+             );
+
+             int MyMethodAsync(Func<int> f) => 1;
+             """,
+             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+         );
+     }
+
+     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+     public async Task AwaitExpression_Method_with_lambda_parameter()
+     {
+         await VerifyDiagnosticAndFixAsync(
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             [|await MyMethodAsync(async (int a, int b, int c) => 
+             await Task.Run(() => 10))|];
+
+             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
+                 => Task.FromResult(1);
+             """,
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             await MyMethodAsync(
+                 async (int a, int b, int c) => 
+                     await Task.Run(() => 10)
+             ); 
+
              Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
                  => Task.FromResult(1);
              """,
@@ -2425,6 +2581,7 @@ public class RCS1271FixStructuralHonestyTests :
 
     // Parameter list
     // Parameter list with /* parameter comment */
+    // Top level invoke expression (not awaitable)
     // Assignment syntax tests
     // BooleanExpression tests
     // Something after lambda arrow tests
@@ -2432,5 +2589,4 @@ public class RCS1271FixStructuralHonestyTests :
     // AwaitExpression_Method_with_InvocationExpression_on_new_line for chaining
     // directives in trivia
     // documentation trivia
-    // Root function call
 }
