@@ -797,38 +797,6 @@ public class RCS1271FixStructuralHonestyTests :
     }
 
     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task Method_with_statement_lambda_parameter()
-    {
-        await VerifyDiagnosticAndFixAsync(
-            """
-            using System;
-            using System.Threading.Tasks;
-
-            [|MyMethod([|(int a, int b, int c) => { 
-                return 10; }|])|];
-
-            int MyMethod(Func<int, int, int, int> f) => 1;
-            """,
-            """
-            using System;
-            using System.Threading.Tasks;
-
-            MyMethod(
-                (int a, int b, int c) => 
-                { 
-                    return 10; 
-                }
-            );
-            
-            int MyMethod(Func<int, int, int, int> f) => 1;
-            """,
-            options: Options.WithCompilationOptions(
-                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
-            )
-        );
-    }
-
-    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
     public async Task AwaitExpression_Method_with_statement_lambda_parameter_with_simple_comments()
     {
         await VerifyDiagnosticAndFixAsync(
@@ -943,240 +911,223 @@ public class RCS1271FixStructuralHonestyTests :
         );
     }
 
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_func_returning_variable_and_accepting_lambda()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             using System;
-//             using System.Threading.Tasks;
-//
-//             int result = [|await MyMethodAsync([|async (int a, int b, int c) =>
-//             {
-//                 return await Task.Run(() => 10);
-//             }|])|];
-//             int result2 = [|MyMethod([|() =>
-//             {
-//                 return 10;
-//             }|])|];
-//             int result3 = [|MyMethod([|() =>
-//             10|])|];
-//             int result4 = [|MyMethod2([|x =>
-//             {
-//                 return 10;
-//             }|])|];
-//
-//             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
-//                 => Task.FromResult(1);
-//
-//             int MyMethod(Func<int> f) => 1;
-//             int MyMethod2(Func<int, int> f) => 1;
-//             """,
-//             """
-//             using System;
-//             using System.Threading.Tasks;
-//
-//             int result =
-//                 await MyMethodAsync(
-//                     async (int a, int b, int c) =>
-//                     {
-//                         return await Task.Run(() => 10);
-//                     }
-//                 );
-//             int result2 =
-//                 MyMethod(
-//                     () =>
-//                     {
-//                         return 10;
-//                     }
-//                 );
-//             int result3 =
-//                 MyMethod(
-//                     () =>
-//                         10
-//                 );
-//             int result4 =
-//                 MyMethod2(
-//                     x =>
-//                     {
-//                         return 10;
-//                     }
-//                 );
-//
-//             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
-//                 => Task.FromResult(1);
-//
-//             int MyMethod(Func<int> f) => 1;
-//             int MyMethod2(Func<int, int> f) => 1;
-//             """,
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_misaligned_method()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             using System;
-//             using System.Threading.Tasks;
-//
-//             int result =
-//                 [|await MyMethodAsync(
-//                     1,
-//                     2
-//                     )|];
-//             int result2 =
-//                 [|await MyMethodAsync(
-//                     1, 2
-//             )|];
-//             int result3 =
-//             [|await MyMethodAsync(
-//                     1, 2)|];
-//             int result4 =
-//             [|MyMethod(
-//                     1, 2
-//             )|];
-//             int result5 =
-//             [|MyMethod(
-//                     1, 2
-//                     )|];
-//             int result6 =
-//                 [|MyMethod(
-//                     1, 2)|];
-//
-//             Task<int> MyMethodAsync(int a, int b) => Task.FromResult(1);
-//             int MyMethod(int a, int b) => 1;
-//             """,
-//             """
-//             using System;
-//             using System.Threading.Tasks;
-//
-//             int result =
-//                 await MyMethodAsync(
-//                     1,
-//                     2
-//                 );
-//             int result2 =
-//                 await MyMethodAsync(
-//                     1, 2
-//                 );
-//             int result3 =
-//                 await MyMethodAsync(
-//                     1, 2
-//                 );
-//             int result4 =
-//                 MyMethod(
-//                     1, 2
-//                 );
-//             int result5 =
-//                 MyMethod(
-//                     1, 2
-//                 );
-//             int result6 =
-//                 MyMethod(
-//                     1, 2
-//                 );
-//
-//             Task<int> MyMethodAsync(int a, int b) => Task.FromResult(1);
-//             int MyMethod(int a, int b) => 1;
-//             """,
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_non_async_func_returning_variable_and_accepting_lambda()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             using System;
-//
-//             int result = [|MyMethod([|(int a, int b, int c) =>
-//             {
-//                 return 10;
-//             }|])|];
-//             int result2 = [|MyMethod([|(int a, int b, int c)=>
-//                 10|])|];
-//             int result3 = [|MyMethod([|(int a, int b, int c)
-//                 => 10|])|];
-//
-//             int MyMethod(Func<int, int, int, int> f) => 1;
-//             """,
-//             """
-//             using System;
-//
-//             int result =
-//                 MyMethod(
-//                     (int a, int b, int c) =>
-//                     {
-//                         return 10;
-//                     }
-//                 );
-//             int result2 =
-//                 MyMethod(
-//                     (int a, int b, int c)=>
-//                         10
-//                 );
-//             int result3 =
-//                 MyMethod(
-//                     (int a, int b, int c)
-//                         => 10
-//                 );
-//
-//             int MyMethod(Func<int, int, int, int> f) => 1;
-//             """,
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_chained_method_and_accepting_lambda()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             using System;
-//             using System.Threading.Tasks;
-//
-//             [|await C.Instance.MyMethodAsync([|async (int a, int b, int c) =>
-//             {
-//                     await Task.Delay(100);
-//                 return 10;
-//             }|])|];
-//             """,
-//             """
-//             using System;
-//             using System.Threading.Tasks;
-//
-//             await C.Instance.MyMethodAsync(
-//                 async (int a, int b, int c) =>
-//                 {
-//                     await Task.Delay(100);
-//                     return 10;
-//                 }
-//             );
-//             """,
-//             additionalFiles:
-//                 new (string source, string expectedSource)[]
-//                 {
-//                     (
-//                         source:
-//                             """
-//                             using System;
-//                             using System.Threading.Tasks;
-//
-//                             public class C {
-//                                 public static C Instance { get; } = new C();
-//
-//                                 public Task<bool> MyMethodAsync(Func<int, int, int, Task<int>> f) => Task.FromResult(true);
-//                             }
-//                             """,
-//                         expectedSource: null
-//                     )
-//                 },
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Method_with_lambda_parameter()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            int result [|= [|MyMethod([|() =>
+            10|])|]|];
+
+            int MyMethod(Func<int> f) => 1;
+            """,
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            int result = 
+                MyMethod(
+                    () =>
+                        10
+                );
+
+            int MyMethod(Func<int> f) => 1;
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Method_with_statement_lambda_parameter()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            [|MyMethod([|(int a, int b, int c) => { 
+                return 10; }|])|];
+
+            int MyMethod(Func<int, int, int, int> f) => 1;
+            """,
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            MyMethod(
+                (int a, int b, int c) => 
+                { 
+                    return 10; 
+                }
+            );
+
+            int MyMethod(Func<int, int, int, int> f) => 1;
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Method_with_statement_lambda_with_one_parameter_parameter()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            int result [|= [|MyMethod(x =>
+            {
+                return 10;
+            })|]|];
+
+            int MyMethod(Func<int, int> f) => 1;
+            """,
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            int result = 
+                MyMethod(
+                    x =>
+                    {
+                        return 10;
+                    }
+                );
+
+            int MyMethod(Func<int, int> f) => 1;
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+     public async Task Methods_that_are_misaligned()
+     {
+         await VerifyDiagnosticAndFixAsync(
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             int result [|=
+                 [|await [|MyMethodAsync(
+                     1,
+                     2
+                     )|]|]|];
+             int result2 [|=
+                 [|await [|MyMethodAsync(
+                     1, 2
+             )|]|]|];
+             int result3 [|=
+             [|await [|MyMethodAsync(
+                     1, 2)|]|]|];
+             int result4 [|=
+             [|MyMethod(
+                     1, 2
+             )|]|];
+             int result5 [|=
+             [|MyMethod(
+                     1, 2
+                     )|]|];
+             int result6 [|=
+                 [|MyMethod(
+                     1, 2)|]|];
+
+             Task<int> MyMethodAsync(int a, int b) => Task.FromResult(1);
+             int MyMethod(int a, int b) => 1;
+             """,
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             int result =
+                 await MyMethodAsync(
+                     1,
+                     2
+                 );
+             int result2 =
+                 await MyMethodAsync(
+                     1, 2
+                 );
+             int result3 =
+                 await MyMethodAsync(
+                     1, 2
+                 );
+             int result4 =
+                 MyMethod(
+                     1, 2
+                 );
+             int result5 =
+                 MyMethod(
+                     1, 2
+                 );
+             int result6 =
+                 MyMethod(
+                     1, 2
+                 );
+
+             Task<int> MyMethodAsync(int a, int b) => Task.FromResult(1);
+             int MyMethod(int a, int b) => 1;
+             """,
+             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+         );
+     }
+
+     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+     public async Task Chained_method_with_statement_lambda_parameter()
+     {
+         await VerifyDiagnosticAndFixAsync(
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             [|await [|C.Instance.MyMethodAsync([|async (int a, int b, int c) =>
+             {
+                     await Task.Delay(100);
+                 return 10;
+             }|])|]|];
+             """,
+             """
+             using System;
+             using System.Threading.Tasks;
+
+             await C.Instance.MyMethodAsync(
+                 async (int a, int b, int c) =>
+                 {
+                     await Task.Delay(100);
+                     return 10;
+                 }
+             );
+             """,
+             additionalFiles:
+                 new (string source, string expectedSource)[]
+                 {
+                     (
+                         source:
+                             """
+                             using System;
+                             using System.Threading.Tasks;
+
+                             public class C {
+                                 public static C Instance { get; } = new C();
+
+                                 public Task<bool> MyMethodAsync(Func<int, int, int, Task<int>> f) => Task.FromResult(true);
+                             }
+                             """,
+                         expectedSource: null
+                     )
+                 },
+             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+         );
+     }
 //
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
 //     public async Task Fixes_Structural_Honesty_for_lambda_variable_declaration()
