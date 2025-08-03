@@ -74,7 +74,9 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         bool nothingButTriviaInFront = CheckNothingButTriviaInFront(node);
         string expectedIndentation = GetParentIndentation(node);
 
-        if (nothingButTriviaInFront)
+        if (nothingButTriviaInFront
+            && node.Kind() is not SyntaxKind.Block
+        )
         {
             expectedIndentation += _singleIndentation;
         }
@@ -98,90 +100,8 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             }
         }
 
-        // SyntaxNode? newNode = EnsureMultilineChildrenSeparatedWithNewLine(node);
-        // if (newNode is not null)
-        // {
-        //     node = newNode;
-        //     _indentationCache[node] = expectedIndentation;
-        //
-        //     ChangesApplied = true;
-        //     // Immediate stop if at least one change was applied
-        //     if (DoAnalysisOnly)
-        //     {
-        //         return node;
-        //     }
-        // }
-
         return base.Visit(node);
     }
-
-    // private SyntaxNode? EnsureMultilineChildrenSeparatedWithNewLine(SyntaxNode node)
-    // {
-    //     ChildSyntaxList children = node.ChildNodesAndTokens();
-    //     if (children.Count < 2)
-    //     {
-    //         // Nothing to change
-    //         return null;
-    //     }
-    //
-    //     bool changesExist = false;
-    //
-    //     for (int i = 0; i < children.Count - 1; i++)
-    //     {
-    //         SyntaxNodeOrToken child = children[i];
-    //
-    //         SyntaxTriviaList trailingTrivia = child.GetTrailingTrivia();
-    //         if (!trailingTrivia.Any())
-    //         {
-    //             // No trailing trivia, so nothing to do
-    //             continue;
-    //         }
-    //
-    //         SyntaxNodeOrToken nextChild = children[i + 1];
-    //
-    //         if (CheckOnTheSameLine(node.SyntaxTree, trailingTrivia.Span, nextChild.Span))
-    //         {
-    //             if (child.IsNode)
-    //             {
-    //                 SyntaxNode childAsNode = child.AsNode()!;
-    //
-    //                 node =
-    //                     node.ReplaceNode(
-    //                         childAsNode,
-    //                         childAsNode.WithTrailingTrivia(
-    //                             child.GetTrailingTrivia().Append(_newLine)
-    //                         )
-    //                     );
-    //             }
-    //             else
-    //             {
-    //                 SyntaxToken childAsToken = child.AsToken();
-    //
-    //                 node =
-    //                     node.ReplaceToken(
-    //                         childAsToken,
-    //                         childAsToken.WithTrailingTrivia(
-    //                             child.GetTrailingTrivia().Append(_newLine)
-    //                         )
-    //                     );
-    //             }
-    //
-    //             changesExist = true;
-    //             // Immediate stop if at least one change was applied
-    //             if (DoAnalysisOnly)
-    //             {
-    //                 return node;
-    //             }
-    //         }
-    //     }
-    //
-    //     if (changesExist)
-    //     {
-    //         return node;
-    //     }
-    //
-    //     return null;
-    // }
 
     public override SyntaxToken VisitToken(SyntaxToken token)
     {
@@ -198,6 +118,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         if (nothingButTriviaInFront)
         {
+            // Logic of moving close parens, bracket and braces to the next line and align them with the parent start
             string expectedIndentation = parentIndentation;
 
             if (token.Kind() is SyntaxKind.CloseParenToken or SyntaxKind.CloseBracketToken or SyntaxKind.CloseBraceToken)
@@ -251,6 +172,46 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             }
         }
 
+        // Logic to add a new line if the next token is multilined. The logic should be applied after special tokens only
+#pragma warning disable RCS0055
+        SyntaxTree? syntaxTree = token.SyntaxTree;
+        if (syntaxTree is not null)
+        {
+            SyntaxToken nextToken = token.GetNextToken();
+            if (
+                CheckOnTheSameLine(syntaxTree, token.Span, nextToken.Span)
+                && (
+                    // The next token is inside the parent of the token
+                    GetNextNode(token, nextToken)?.IsMultiLine() is true
+                    // the token is inside a block, and the next token is the block close brace
+                    || (
+                        nextToken.Parent?.IsMultiLine() is true
+                        && nextToken.Parent.ChildNodesAndTokens()
+                            .Any(cnt => cnt.IsNode && ReferenceEquals(cnt.AsNode(), token.Parent))
+                    )
+                )
+                && (
+                    token.Kind() is SyntaxKind.OpenParenToken or SyntaxKind.OpenBracketToken or SyntaxKind.OpenBraceToken
+                    || nextToken.Kind()
+                        is SyntaxKind.OpenBracketToken
+                        or SyntaxKind.OpenBraceToken
+                        or SyntaxKind.CloseBracketToken
+                        or SyntaxKind.CloseBraceToken
+                )
+            )
+            {
+                token = token.WithTrailingTrivia(token.TrailingTrivia.Append(_newLine));
+
+                ChangesApplied = true;
+                // Immediate stop if at least one change was applied
+                if (DoAnalysisOnly)
+                {
+                    return token;
+                }
+            }
+        }
+#pragma warning restore RCS0055
+
         return base.VisitToken(token);
     }
 
@@ -282,30 +243,6 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         return base.VisitEqualsValueClause(node);
     }
-
-    // public override SyntaxNode? VisitAssignmentExpression(AssignmentExpressionSyntax node)
-    // {
-    //     if (node.OperatorToken.TrailingTrivia.LastOrDefault().IsKind(SyntaxKind.EndOfLineTrivia)
-    //         || node.Right.GetLeadingTrivia().FirstOrDefault().IsKind(SyntaxKind.EndOfLineTrivia)
-    //         || node.Right.IsSingleLine(cancellationToken: _cancellationToken)
-    //     )
-    //     {
-    //         return base.VisitAssignmentExpression(node);
-    //     }
-    //
-    //     node =
-    //         node.WithOperatorToken(
-    //             node.OperatorToken.AppendToTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed)
-    //         );
-    //
-    //     if (DoAnalysisOnly)
-    //     {
-    //         HasStructuralHonestyIssues = true;
-    //         return node;
-    //     }
-    //
-    //     return base.VisitAssignmentExpression(node);
-    // }
 
     public override SyntaxNode? VisitArgumentList(ArgumentListSyntax node)
     {
@@ -381,89 +318,6 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         return base.VisitArgumentList(node);
     }
-
-    // public override SyntaxNode? VisitArgument(ArgumentSyntax node)
-    // {
-    //     if (node.Parent is ArgumentListSyntax argumentListSyntax)
-    //     {
-    //         LinePosition openParenLinePosition =
-    //             _textLines.GetLinePosition(argumentListSyntax.OpenParenToken.SpanStart);
-    //         LinePosition closeParenLinePosition =
-    //             _textLines.GetLinePosition(argumentListSyntax.CloseParenToken.SpanStart);
-    //
-    //         if (openParenLinePosition.Line != closeParenLinePosition.Line // Multi-lined
-    //             && argumentListSyntax.Arguments.Last() == node
-    //             && !node.GetTrailingTrivia().LastOrDefault().IsKind(SyntaxKind.EndOfLineTrivia))
-    //         {
-    //             SyntaxTrivia newLine =(node);
-    //             // Moving closing paren to the next line
-    //             node = node.AppendToTrailingTrivia(newLine);
-    //
-    //             ChangesApplied = true;
-    //             // Immediate stop if at least one change was applied
-    //             if (DoAnalysisOnly)
-    //             {
-    //                 return node;
-    //             }
-    //         }
-    //     }
-    //
-    //     return base.VisitArgument(node);
-    // }
-
-    // public override SyntaxNode? VisitAwaitExpression(AwaitExpressionSyntax node)
-    // {
-    //     if (!CheckNothingButTriviaInFront(node))
-    //     {
-    //         return base.VisitAwaitExpression(node);
-    //     }
-    //
-    //     // The leading trivia should be already formatted in the Visit method
-    //
-    //     // The logic in the Visit + CheckNothingButTriviaInFront above should eliminate the possibility
-    //     // to have a single-lined node here
-    //
-    //     // Now we need to process different special cases for the await expression that require additional formatting
-    //     AwaitExpressionSyntax? newNode = null;
-    //
-    //     switch (node.Expression)
-    //     {
-    //         case InvocationExpressionSyntax invocationExpressionSyntax:
-    //             break;
-    //         case ParenthesizedExpressionSyntax parenthesizedExpressionSyntax:
-    //             break;
-    //     }
-    //
-    //     if (newNode is not null)
-    //     {
-    //         node = newNode;
-    //         ChangesApplied = true;
-    //
-    //         // Immediate stop if at least one change was applied
-    //         if (DoAnalysisOnly)
-    //         {
-    //             return node;
-    //         }
-    //     }
-    //     // node =
-    //     //     node.WithEqualsToken(
-    //     //         node.EqualsToken.AppendToTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed)
-    //     //     );
-    //     //
-    //     // newNodeOrToken = ReformatTrailingTrivia(node, expectedIndentation);
-    //     // if (newNodeOrToken is not null)
-    //     // {
-    //     //     if (DoAnalysisOnly)
-    //     //     {
-    //     //         HasStructuralHonestyIssues = true;
-    //     //         return newNodeOrToken.Value.AsNode();
-    //     //     }
-    //     //
-    //     //     node = newNodeOrToken.Value.AsNode();
-    //     // }
-    //
-    //     return base.VisitAwaitExpression(node);
-    // }
 
     private SyntaxNodeOrToken? ReformatLeadingTrivia(
         SyntaxNodeOrToken node,
@@ -858,6 +712,32 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         }
 
         return _parentIndentation;
+    }
+
+    private static SyntaxNode? GetNextNode(SyntaxToken token, SyntaxToken nextToken)
+    {
+        SyntaxNode? tokenParent = token.Parent;
+        if (tokenParent is null)
+        {
+            return null;
+        }
+
+        ChildSyntaxList tokenParentChildren = tokenParent.ChildNodesAndTokens();
+
+        SyntaxNode? parent = nextToken.Parent;
+        while (parent is not null)
+        {
+            if (ReferenceEquals(parent, tokenParent)
+                || tokenParentChildren.Any(tpc => tpc.IsNode && ReferenceEquals(tpc.AsNode(), parent))
+            )
+            {
+                return parent;
+            }
+
+            parent = parent.Parent;
+        }
+
+        return null;
     }
 }
 
