@@ -162,7 +162,7 @@ public class RCS1271FixStructuralHonestyTests :
             using System;
             using System.Threading.Tasks;
 
-            int result = 
+            int result =
                 await MyMethodAsync(
                     1
                 );
@@ -254,7 +254,7 @@ public class RCS1271FixStructuralHonestyTests :
             using System;
             using System.Threading.Tasks;
 
-            int result = 
+            int result =
                 await MyMethodAsync(
                     1
                 );
@@ -286,7 +286,7 @@ public class RCS1271FixStructuralHonestyTests :
             using System;
             using System.Threading.Tasks;
 
-            int result = 
+            int result =
                 await
                     MyMethodAsync(
                         1
@@ -376,9 +376,9 @@ public class RCS1271FixStructuralHonestyTests :
             comment5
                 comment6*/ /*comment7
                 comment8
-            comment9*/ 
+            comment9*/
                 await MyMethodAsync(/*comment10
-            comment11*/ 
+            comment11*/
                     1,
                     /*comment12
                     comment13*/ /*comment14
@@ -769,7 +769,7 @@ public class RCS1271FixStructuralHonestyTests :
             using System;
             using System.Threading.Tasks;
 
-            [|await [|MyMethodAsync([|async (int a, int b, int c) => { 
+            [|await [|MyMethodAsync([|async (int a, int b, int c) => {
                 return await Task.Run(() => 10); }|])|]|];
 
             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
@@ -780,9 +780,9 @@ public class RCS1271FixStructuralHonestyTests :
             using System.Threading.Tasks;
 
             await MyMethodAsync(
-                async (int a, int b, int c) => 
-                { 
-                    return await Task.Run(() => 10); 
+                async (int a, int b, int c) =>
+                {
+                    return await Task.Run(() => 10);
                 }
             );
 
@@ -873,7 +873,7 @@ public class RCS1271FixStructuralHonestyTests :
             using System;
             using System.Threading.Tasks;
 
-            int result = 
+            int result =
                 await MyMethodAsync(/*comment*/
                     async (int a, int b, int c) =>
                     /*comment*/
@@ -886,14 +886,14 @@ public class RCS1271FixStructuralHonestyTests :
             // Multiline
             result =/*comment1
                 comment2
-            comment3*/ 
+            comment3*/
                 await MyMethodAsync(/*comment4
             comment5*/
                     async (int a, int b, int c) =>
                     /*comment6
                     comment7*/
                     {/*comment12
-            comment13*/ 
+            comment13*/
                         return await Task.Run(() => 10);
                         /*comment8
                         comment9*/
@@ -927,7 +927,7 @@ public class RCS1271FixStructuralHonestyTests :
             using System;
             using System.Threading.Tasks;
 
-            int result = 
+            int result =
                 MyMethod(
                     () =>
                         10
@@ -949,7 +949,7 @@ public class RCS1271FixStructuralHonestyTests :
             using System;
             using System.Threading.Tasks;
 
-            [|MyMethod([|(int a, int b, int c) => { 
+            [|MyMethod([|(int a, int b, int c) => {
                 return 10; }|])|];
 
             int MyMethod(Func<int, int, int, int> f) => 1;
@@ -959,9 +959,9 @@ public class RCS1271FixStructuralHonestyTests :
             using System.Threading.Tasks;
 
             MyMethod(
-                (int a, int b, int c) => 
-                { 
-                    return 10; 
+                (int a, int b, int c) =>
+                {
+                    return 10;
                 }
             );
 
@@ -992,7 +992,7 @@ public class RCS1271FixStructuralHonestyTests :
             using System;
             using System.Threading.Tasks;
 
-            int result = 
+            int result =
                 MyMethod(
                     x =>
                     {
@@ -1226,20 +1226,20 @@ public class RCS1271FixStructuralHonestyTests :
             """
             using System;
 
-            Action<int, int, int> myAction [|= (int a, int b, int c) => 
+            Action<int, int, int> myAction [|= (int a, int b, int c) =>
             { 
-                /* comment */ 
-                /* comment */ 
+                /* comment */
+                /* comment */
             }|];
             """,
             """
             using System;
             
-            Action<int, int, int> myAction = 
-                (int a, int b, int c) => 
+            Action<int, int, int> myAction =
+                (int a, int b, int c) =>
                 { 
-                    /* comment */ 
-                    /* comment */ 
+                    /* comment */
+                    /* comment */
                 };
             """,
             options: Options.WithCompilationOptions(
@@ -1255,20 +1255,20 @@ public class RCS1271FixStructuralHonestyTests :
             """
             using System;
 
-            Action<int, int, int> myAction [|= 
-                [|(int a, int b, int c) => { 
-                    /* comment */ 
-                    /* comment */ 
+            Action<int, int, int> myAction [|=
+                [|(int a, int b, int c) => {
+                    /* comment */
+                    /* comment */
                 }|]|];
             """,
             """
             using System;
             
-            Action<int, int, int> myAction = 
-                (int a, int b, int c) => 
-                { 
-                    /* comment */ 
-                    /* comment */ 
+            Action<int, int, int> myAction =
+                (int a, int b, int c) =>
+                {
+                    /* comment */
+                    /* comment */
                 };
             """,
             options: Options.WithCompilationOptions(
@@ -1284,20 +1284,20 @@ public class RCS1271FixStructuralHonestyTests :
             """
             using System;
 
-            Action myAction [|= () => 
-            { 
-                /* comment */ 
-                /* comment */ 
+            Action myAction [|= () =>
+            {
+                /* comment */
+                /* comment */
             }|];
             """,
             """
             using System;
 
-            Action myAction = 
-                () => 
-                { 
-                    /* comment */ 
-                    /* comment */ 
+            Action myAction =
+                () =>
+                {
+                    /* comment */
+                    /* comment */
                 };
             """,
             options: Options.WithCompilationOptions(
@@ -1313,22 +1313,22 @@ public class RCS1271FixStructuralHonestyTests :
             """
             using System;
 
-            Action<int> myAction [|= x => 
+            Action<int> myAction [|= x =>
             { /* comment */
-                // Comment 
-                Console.WriteLine(x); 
-                /* comment */ 
+                // Comment
+                Console.WriteLine(x);
+                /* comment */
             }|];
             """,
             """
             using System;
 
-            Action<int> myAction = 
-                x => 
+            Action<int> myAction =
+                x =>
                 { /* comment */
-                    // Comment 
-                    Console.WriteLine(x); 
-                    /* comment */ 
+                    // Comment
+                    Console.WriteLine(x);
+                    /* comment */
                 };
             """,
             options: Options.WithCompilationOptions(
@@ -1344,14 +1344,14 @@ public class RCS1271FixStructuralHonestyTests :
             """
             using System;
 
-            Func<int, int, int> myFunc [|= [|(int a, int b) => 
+            Func<int, int, int> myFunc [|= [|(int a, int b) =>
             a + b|]|];
             """,
             """
             using System;
 
-            Func<int, int, int> myFunc = 
-                (int a, int b) => 
+            Func<int, int, int> myFunc =
+                (int a, int b) =>
                     a + b;
             """,
             options: Options.WithCompilationOptions(
@@ -1367,14 +1367,14 @@ public class RCS1271FixStructuralHonestyTests :
             """
             using System;
 
-            Func<int, int, int> myFunc [|= (int a, int b) 
+            Func<int, int, int> myFunc [|= (int a, int b)
                 => a + b|];
             """,
             """
             using System;
 
-            Func<int, int, int> myFunc = 
-                (int a, int b) 
+            Func<int, int, int> myFunc =
+                (int a, int b)
                     => a + b;
             """,
             options: Options.WithCompilationOptions(
@@ -1392,18 +1392,18 @@ public class RCS1271FixStructuralHonestyTests :
             """
             using System;
 
-            Func<int, int, int> myFunc [|= [|(int a, int b) 
+            Func<int, int, int> myFunc [|= [|(int a, int b)
                 => {
                 return a + b; }|]|];
             """,
             """
             using System;
 
-            Func<int, int, int> myFunc = 
-                (int a, int b) 
-                    => 
+            Func<int, int, int> myFunc =
+                (int a, int b)
+                    =>
                 {
-                    return a + b; 
+                    return a + b;
                 };
             """,
             options: Options.WithCompilationOptions(
@@ -1419,7 +1419,7 @@ public class RCS1271FixStructuralHonestyTests :
             """
             using System;
 
-            Func<int, int, int> myFunc [|= (int a, int b) => 
+            Func<int, int, int> myFunc [|= (int a, int b) =>
             {
                 return a + b;
             }|];
@@ -1427,8 +1427,8 @@ public class RCS1271FixStructuralHonestyTests :
             """
             using System;
 
-            Func<int, int, int> myFunc = 
-                (int a, int b) => 
+            Func<int, int, int> myFunc =
+                (int a, int b) =>
                 {
                     return a + b;
                 };
@@ -1446,14 +1446,14 @@ public class RCS1271FixStructuralHonestyTests :
             """
             using System;
 
-            Func<int> myFunc [|= [|() => 
+            Func<int> myFunc [|= [|() =>
             10|]|];
             """,
             """
             using System;
 
-            Func<int> myFunc = 
-                () => 
+            Func<int> myFunc =
+                () =>
                     10;
             """,
             options: Options.WithCompilationOptions(
@@ -1469,18 +1469,18 @@ public class RCS1271FixStructuralHonestyTests :
             """
             using System;
 
-            Func<int> myFunc [|= () => 
-            { 
-                return 10; 
+            Func<int> myFunc [|= () =>
+            {
+                return 10;
             }|];
             """,
             """
             using System;
 
-            Func<int> myFunc = 
-                () => 
-                { 
-                    return 10; 
+            Func<int> myFunc =
+                () =>
+                {
+                    return 10;
                 };
             """,
             options: Options.WithCompilationOptions(
@@ -1496,14 +1496,14 @@ public class RCS1271FixStructuralHonestyTests :
             """
             using System;
 
-            Func<int, int> myFunc [|= [|x => 
+            Func<int, int> myFunc [|= [|x =>
             x|]|];
             """,
             """
             using System;
 
-            Func<int, int> myFunc = 
-                x => 
+            Func<int, int> myFunc =
+                x =>
                     x;
             """,
             options: Options.WithCompilationOptions(
@@ -1519,18 +1519,18 @@ public class RCS1271FixStructuralHonestyTests :
             """
             using System;
 
-            Func<int, int> myFunc [|= x => 
-            { 
-                return x; 
+            Func<int, int> myFunc [|= x =>
+            {
+                return x;
             }|];
             """,
             """
             using System;
 
-            Func<int, int> myFunc = 
-                x => 
-                { 
-                    return x; 
+            Func<int, int> myFunc =
+                x =>
+                {
+                    return x;
                 };
             """,
             options: Options.WithCompilationOptions(
@@ -1557,12 +1557,12 @@ public class RCS1271FixStructuralHonestyTests :
              }|]|];
              """,
              """
-             MyType myVariable = 
+             MyType myVariable =
                  new MyType
                  {
                      Property1 = 1,
                      Property2 = 2,
-                     Nested = 
+                     Nested =
                          new MyType
                          {
                              Property1 = 3,
@@ -1576,14 +1576,14 @@ public class RCS1271FixStructuralHonestyTests :
                  {
                      (
                          source:
-                         """
-                         public sealed class MyType
-                         {
-                             public required int Property1 { get; init; }
-                             public required int Property2 { get; init; }
-                             public required MyType Nested { get; init; }
-                         }
-                         """,
+                             """
+                             public sealed class MyType
+                             {
+                                 public required int Property1 { get; init; }
+                                 public required int Property2 { get; init; }
+                                 public required MyType Nested { get; init; }
+                             }
+                             """,
                          expectedSource: null
                      )
                  },
@@ -1591,180 +1591,288 @@ public class RCS1271FixStructuralHonestyTests :
          );
     }
 
-     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-     public async Task New_class_instantiation_with_nested_new_class_instantiation_open_brace_on_the_same_line()
-     {
-         await VerifyDiagnosticAndFixAsync(
-             """
-             MyType myVariable [|= [|new MyType {
-                         [|Property1 = 1|],
-                         [|Property2 = 2|],
-             [|Nested = new MyType
-             {
-                 Property1 = 3,
-                 Property2 = 4,
-                 Nested = null
-             }|]
-                     }|]|];
-             """,
-             """
-             MyType myVariable = 
-                 new MyType 
-                 {
-                     Property1 = 1,
-                     Property2 = 2,
-                     Nested = 
-                         new MyType
-                         {
-                             Property1 = 3,
-                             Property2 = 4,
-                             Nested = null
-                         }
-                 };
-             """,
-             additionalFiles:
-                 new (string source, string expectedSource)[]
-                 {
-                     (
-                         source:
-                         """
-                         public sealed class MyType
-                         {
-                             public required int Property1 { get; init; }
-                             public required int Property2 { get; init; }
-                             public required MyType Nested { get; init; }
-                         }
-                         """,
-                         expectedSource: null
-                     )
-                 },
-             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-         );
-     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_func_returning_variable_and_accepting_new_object()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             using System;
-//             using System.Threading.Tasks;
-//
-//             int myVariable = [|await MyMethodAsync([|new MyType()
-//             {
-//                 Property1 = 1,
-//                 Property2 = 2
-//             }|])|];
-//
-//             myVariable = [|await MyMethodAsync(/*
-//             Comment1
-//             Comment2
-//             */[|new MyType()
-//             // Comment 3
-//             {
-//             //Comment 4
-//                 Property1 = 1,
-//                 Property2 = 2
-//             // Comment 5
-//             }/*Comment6*/|])|];
-//
-//             Task<int> MyMethodAsync(MyType mt)
-//                 => Task.FromResult(1);
-//             """,
-//             """
-//             using System;
-//             using System.Threading.Tasks;
-//
-//             int myVariable =
-//                 await MyMethodAsync(
-//                     new MyType()
-//                     {
-//                         Property1 = 1,
-//                         Property2 = 2
-//                     }
-//                 );
-//
-//             myVariable =
-//                 await MyMethodAsync(
-//                     /*
-//                     Comment1
-//                     Comment2
-//                     */
-//                     new MyType()
-//                     // Comment 3
-//                     {
-//                         //Comment 4
-//                         Property1 = 1,
-//                         Property2 = 2
-//                         // Comment 5
-//                     }
-//                     /*Comment6*/
-//                 );
-//
-//             Task<int> MyMethodAsync(MyType mt)
-//                 => Task.FromResult(1);
-//             """,
-//             additionalFiles:
-//                 new (string source, string expectedSource)[]
-//                 {
-//                     (
-//                         source:
-//                         """
-//                         public sealed class MyType
-//                         {
-//                             public required int Property1 { get; init; }
-//                             public required int Property2 { get; init; }
-//                         }
-//                         """,
-//                         expectedSource: null
-//                     )
-//                 },
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_func_returning_variable_and_accepting_single_lined_new_object()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             using System;
-//             using System.Threading.Tasks;
-//
-//             int myVariable = [|await MyMethodAsync(
-//                 new MyType() { Property1 = 1, Property2 = 2 })|];
-//
-//             Task<int> MyMethodAsync(MyType mt) => Task.FromResult(1);
-//             """,
-//             """
-//             using System;
-//             using System.Threading.Tasks;
-//
-//             int myVariable =
-//                 await MyMethodAsync(
-//                     new MyType() { Property1 = 1, Property2 = 2 }
-//                 );
-//
-//             Task<int> MyMethodAsync(MyType mt) => Task.FromResult(1);
-//             """,
-//             additionalFiles:
-//                 new (string source, string expectedSource)[]
-//                 {
-//                     (
-//                         source:
-//                         """
-//                         public sealed class MyType
-//                         {
-//                             public required int Property1 { get; init; }
-//                             public required int Property2 { get; init; }
-//                         }
-//                         """,
-//                         expectedSource: null
-//                     )
-//                 },
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task New_class_instantiation_with_nested_new_class_instantiation_open_brace_on_the_same_line()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            MyType myVariable [|= [|new MyType {
+                        [|Property1 = 1|],
+                        [|Property2 = 2|],
+            [|Nested = new MyType
+            {
+                Property1 = 3,
+                Property2 = 4,
+                Nested = null
+            }|]
+                    }|]|];
+            """,
+            """
+            MyType myVariable =
+                new MyType
+                {
+                    Property1 = 1,
+                    Property2 = 2,
+                    Nested =
+                        new MyType
+                        {
+                            Property1 = 3,
+                            Property2 = 4,
+                            Nested = null
+                        }
+                };
+            """,
+            additionalFiles:
+            new (string source, string expectedSource)[]
+            {
+                (
+                    source:
+                        """
+                        public sealed class MyType
+                        {
+                            public required int Property1 { get; init; }
+                            public required int Property2 { get; init; }
+                            public required MyType Nested { get; init; }
+                        }
+                        """,
+                    expectedSource: null
+                )
+            },
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task New_class_instantiation_with_nested_single_lined_new_class_instantiation()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            MyType myVariable [|= new MyType
+            {
+                Property1 = 1,
+                Property2 = 2,
+                Nested = new MyType { Property1 = 3, Property2 = 4, Nested = null }
+            }|];
+            """,
+            """
+            MyType myVariable =
+                new MyType
+                {
+                    Property1 = 1,
+                    Property2 = 2,
+                    Nested = new MyType { Property1 = 3, Property2 = 4, Nested = null }
+                };
+            """,
+            additionalFiles:
+            new (string source, string expectedSource)[]
+            {
+                (
+                    source:
+                        """
+                        public sealed class MyType
+                        {
+                            public required int Property1 { get; init; }
+                            public required int Property2 { get; init; }
+                            public required MyType Nested { get; init; }
+                        }
+                        """,
+                    expectedSource: null
+                )
+            },
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task New_single_lined_class_instantiation()
+    {
+        await VerifyNoDiagnosticAsync(
+            "MyType myVariable = new MyType { Property1 = 1, Property2 = 2 };",
+            additionalFiles:
+                [
+                    """
+                    public sealed class MyType
+                    {
+                        public required int Property1 { get; init; }
+                        public required int Property2 { get; init; }
+                    }
+                    """
+                ],
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task AwaitExpression_Method_with_new_class_instantiation_parameter()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            int myVariable [|= [|await [|MyMethodAsync(new MyType()
+            {
+                Property1 = 1,
+                Property2 = 2
+            })|]|]|];
+
+            Task<int> MyMethodAsync(MyType mt) => Task.FromResult(1);
+            """,
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            int myVariable =
+                await MyMethodAsync(
+                    new MyType()
+                    {
+                        Property1 = 1,
+                        Property2 = 2
+                    }
+                );
+
+            Task<int> MyMethodAsync(MyType mt) => Task.FromResult(1);
+            """,
+            additionalFiles:
+                new(string source, string expectedSource)[]
+                {
+                    (
+                        source:
+                        """
+                        public sealed class MyType
+                        {
+                            public required int Property1 { get; init; }
+                            public required int Property2 { get; init; }
+                        }
+                        """,
+                        expectedSource: null
+                    )
+                },
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task AwaitExpression_Method_with_new_class_instantiation_parameter_with_complex_comments()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            int myVariable [|= [|await [|MyMethodAsync( /* Comment0 */
+            [|/*
+            Comment1
+            Comment2
+            */new MyType()
+            // Comment 3
+            {
+            [|//Comment 4
+                Property1 = 1|],
+                Property2 = 2
+            // Comment 5
+            }/*Comment6*/|])|]|]|];
+
+            Task<int> MyMethodAsync(MyType mt)
+                => Task.FromResult(1);
+            """,
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            int myVariable =
+                await MyMethodAsync( /* Comment0 */
+                    /*
+                    Comment1
+                    Comment2
+                    */
+                    new MyType()
+                    // Comment 3
+                    {
+                        //Comment 4
+                        Property1 = 1,
+                        Property2 = 2
+                        // Comment 5
+                    }/*Comment6*/
+                );
+
+            Task<int> MyMethodAsync(MyType mt)
+                => Task.FromResult(1);
+            """,
+            additionalFiles:
+                new(string source, string expectedSource)[]
+                {
+                    (
+                        source:
+                        """
+                        public sealed class MyType
+                        {
+                            public required int Property1 { get; init; }
+                            public required int Property2 { get; init; }
+                        }
+                        """,
+                        expectedSource: null
+                    )
+                },
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task AwaitExpression_Method_with_new_single_lined_class_instantiation()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            int myVariable [|= [|await [|MyMethodAsync(
+                new MyType() { Property1 = 1, Property2 = 2 })|]|]|];
+
+            Task<int> MyMethodAsync(MyType mt) => Task.FromResult(1);
+            """,
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            int myVariable =
+                await MyMethodAsync(
+                    new MyType() { Property1 = 1, Property2 = 2 }
+                );
+
+            Task<int> MyMethodAsync(MyType mt) => Task.FromResult(1);
+            """,
+            additionalFiles:
+                new (string source, string expectedSource)[]
+                {
+                    (
+                        source:
+                        """
+                        public sealed class MyType
+                        {
+                            public required int Property1 { get; init; }
+                            public required int Property2 { get; init; }
+                        }
+                        """,
+                        expectedSource: null
+                    )
+                },
+            options:
+                Options.WithCompilationOptions(
+                    Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+                )
+        );
+    }
 //
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
 //     public async Task No_Structural_Honesty_diagnostic_for_single_lined_func_that_accepting_single_lined_new_object()
@@ -1887,66 +1995,6 @@ public class RCS1271FixStructuralHonestyTests :
 //                         expectedSource: null
 //                     )
 //                 },
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_new_object_with_nested_single_lined_new_object()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             MyType myVariable = [|new MyType
-//             {
-//                 Property1 = 1,
-//                 Property2 = 2,
-//                 Nested = new MyType { Property1 = 3, Property2 = 4, Nested = null }
-//             }|];
-//             """,
-//             """
-//             MyType myVariable =
-//                 new MyType
-//                 {
-//                     Property1 = 1,
-//                     Property2 = 2,
-//                     Nested = new MyType { Property1 = 3, Property2 = 4, Nested = null }
-//                 };
-//             """,
-//             additionalFiles:
-//                 new (string source, string expectedSource)[]
-//                 {
-//                     (
-//                         source:
-//                         """
-//                         public sealed class MyType
-//                         {
-//                             public required int Property1 { get; init; }
-//                             public required int Property2 { get; init; }
-//                             public required MyType Nested { get; init; }
-//                         }
-//                         """,
-//                         expectedSource: null
-//                     )
-//                 },
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task No_Structural_Honesty_diagnostic_for_single_lined_new_object()
-//     {
-//         await VerifyNoDiagnosticAsync(
-//             "MyType myVariable = new MyType { Property1 = 1, Property2 = 2 };",
-//             additionalFiles:
-//                 [
-//                         """
-//                         public sealed class MyType
-//                         {
-//                             public required int Property1 { get; init; }
-//                             public required int Property2 { get; init; }
-//                         }
-//                         """
-//                 ],
 //             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
 //         );
 //     }
@@ -2997,4 +3045,5 @@ public class RCS1271FixStructuralHonestyTests :
     // AwaitExpression_Method_with_InvocationExpression_on_new_line for chaining
     // directives in trivia
     // documentation trivia
+    // tuples with named fields
 }

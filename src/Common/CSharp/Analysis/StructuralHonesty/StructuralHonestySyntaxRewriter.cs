@@ -177,7 +177,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                     && CheckOnTheSameLine(tokenSyntaxTree, tokenFullSpan, nextToken.Span)
                 )
                 {
-                    token = token.WithTrailingTrivia(trailingTrivia.Append(_newLine));
+                    token = token.WithTrailingTrivia(trailingTrivia.AppendNewLine(_newLine));
 
                     ChangesApplied = true;
                     // Immediate stop if at least one change was applied
@@ -217,7 +217,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                 )
             )
             {
-                token = token.WithTrailingTrivia(token.TrailingTrivia.Append(_newLine));
+                token = token.WithTrailingTrivia(token.TrailingTrivia.AppendNewLine(_newLine));
 
                 ChangesApplied = true;
                 // Immediate stop if at least one change was applied
@@ -247,7 +247,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         SyntaxToken newEqualsToken =
             node.EqualsToken.WithTrailingTrivia(
-                node.EqualsToken.TrailingTrivia.Append(_newLine)
+                node.EqualsToken.TrailingTrivia.AppendNewLine(_newLine)
             );
         node = node.WithEqualsToken(newEqualsToken);
 
@@ -276,7 +276,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         SyntaxToken newOperatorToken =
             node.OperatorToken.WithTrailingTrivia(
-                node.OperatorToken.TrailingTrivia.Append(_newLine)
+                node.OperatorToken.TrailingTrivia.AppendNewLine(_newLine)
             );
         node = node.WithOperatorToken(newOperatorToken);
 
@@ -320,7 +320,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
                 ArgumentSyntax newLastArgument =
                     lastArgument.WithTrailingTrivia(
-                        lastArgument.GetTrailingTrivia().Append(_newLine)
+                        lastArgument.GetTrailingTrivia().AppendNewLine(_newLine)
                     );
 
                 node =
@@ -343,7 +343,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                 // then nothing should be in front apart from multiline comments attached to the open paren
                 SyntaxToken newOpenToken =
                     node.OpenParenToken.WithTrailingTrivia(
-                        node.OpenParenToken.TrailingTrivia.Append(_newLine)
+                        node.OpenParenToken.TrailingTrivia.AppendNewLine(_newLine)
                     );
                 node = node.Update(newOpenToken, node.Arguments, node.CloseParenToken);
 
@@ -835,4 +835,26 @@ file static class SyntaxNodeOrTokenExtensions
         => kind
             is SyntaxKind.Argument
             or SyntaxKind.ArgumentList;
+
+    public static SyntaxTriviaList AppendNewLine(this SyntaxTriviaList trailingTrivia, SyntaxTrivia newLine)
+    {
+        if (trailingTrivia.Any())
+        {
+            SyntaxTrivia lastSyntaxTrivia = trailingTrivia.Last();
+
+            if (lastSyntaxTrivia.IsKind(SyntaxKind.EndOfLineTrivia))
+            {
+                // If the last trivia is already an end of line, then we don't need to add a new line
+                return trailingTrivia;
+            }
+
+            if (lastSyntaxTrivia.IsKind(SyntaxKind.WhitespaceTrivia))
+            {
+                // If the last trivia is whitespace, then we can replace it with a new line
+                return trailingTrivia.Replace(lastSyntaxTrivia, newLine);
+            }
+        }
+
+        return SyntaxFactory.TriviaList(trailingTrivia.Append(newLine));
+    }
 }
