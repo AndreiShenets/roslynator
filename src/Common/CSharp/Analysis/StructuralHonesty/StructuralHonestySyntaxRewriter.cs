@@ -74,21 +74,38 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         bool nothingButTriviaInFront = CheckNothingButTriviaInFront(node);
         string expectedIndentation = GetParentIndentation(node);
 
-        if (nothingButTriviaInFront
-            && node.Kind()
+        if (nothingButTriviaInFront)
+        {
+            SyntaxKind nodeKind = node.Kind();
+            if (nodeKind
                 is not (
                     SyntaxKind.Block
                     or SyntaxKind.ObjectInitializerExpression
                     or SyntaxKind.WithInitializerExpression
                 )
-        )
-        {
-            expectedIndentation += _singleIndentation;
+            )
+            {
+                expectedIndentation += _singleIndentation;
+
+                // Special case. Because of the structure of the syntax tree - ArgumentSyntax = NameColonSyntax? + *Syntax,
+                // it is easier to do this check to handle additional indentation for the right part
+                if (nodeKind is not SyntaxKind.NameColon
+                    && node.Parent?.Kind() is SyntaxKind.Argument
+                    && node.Parent is ArgumentSyntax { NameColon: not null }
+                )
+                {
+                    expectedIndentation += _singleIndentation;
+                }
+            }
         }
 
         // Immediately add the current node expected indentation to the cache
-        // After reformatting a parent node might be lost
-        _indentationCache[node] = expectedIndentation;
+        // After reformatting a parent node might be lost.
+        // Argument and ArgumentList are special cases that should not be added to the cache
+        if (node.Kind() is not (SyntaxKind.Argument or SyntaxKind.ArgumentList))
+        {
+            _indentationCache[node] = expectedIndentation;
+        }
 
         SyntaxNodeOrToken? newNodeOrToken = ReformatLeadingTrivia(node, expectedIndentation);
         // Are there changes?
@@ -239,10 +256,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
     public override SyntaxNode? VisitEqualsValueClause(EqualsValueClauseSyntax node)
     {
-        bool equalsTokenAndValueOnDifferentLines = !CheckOnTheSameLine(node.SyntaxTree, node.EqualsToken.Span, node.Value.Span);
+        bool tokensOnDifferentLines = !CheckOnTheSameLine(node.SyntaxTree, node.EqualsToken.Span, node.Value.Span);
 
         // Either the equals token and value are on the different lines
-        if (equalsTokenAndValueOnDifferentLines
+        if (tokensOnDifferentLines
             // Or they are on the same line, but the value is single-lined
             || node.Value.IsSingleLine(cancellationToken: _cancellationToken)
         )
@@ -268,10 +285,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
     public override SyntaxNode? VisitAssignmentExpression(AssignmentExpressionSyntax node)
     {
-        bool equalsTokenAndValueOnDifferentLines = !CheckOnTheSameLine(node.SyntaxTree, node.OperatorToken.Span, node.Right.Span);
+        bool tokensOnDifferentLines = !CheckOnTheSameLine(node.SyntaxTree, node.OperatorToken.Span, node.Right.Span);
 
         // Either the equals token and value are on the different lines
-        if (equalsTokenAndValueOnDifferentLines
+        if (tokensOnDifferentLines
             // Or they are on the same line, but the value is single-lined
             || node.Right.IsSingleLine(cancellationToken: _cancellationToken)
         )
@@ -293,6 +310,43 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         }
 
         return base.VisitAssignmentExpression(node);
+    }
+
+    public override SyntaxNode? VisitArgument(ArgumentSyntax node)
+    {
+        if (node.NameColon is null)
+        {
+            return base.VisitArgument(node);
+        }
+
+        bool tokensOnDifferentLines = !CheckOnTheSameLine(node.SyntaxTree, node.NameColon.Span, node.Expression.Span);
+        string expectedIndentation =  GetParentIndentation(node) + _singleIndentation;
+
+        // Either the equals token and value are on the different lines
+        if (tokensOnDifferentLines
+            // Or they are on the same line, but the value is single-lined
+            || node.Expression.IsSingleLine(cancellationToken: _cancellationToken)
+        )
+        {
+            return base.VisitArgument(node);
+        }
+
+        NameColonSyntax newEqualsToken =
+            node.NameColon.WithTrailingTrivia(
+                node.NameColon.GetTrailingTrivia().AppendNewLine(_newLine)
+            );
+        node = node.WithNameColon(newEqualsToken);
+
+        _indentationCache[node] = expectedIndentation;
+
+        ChangesApplied = true;
+        // Immediate stop if at least one change was applied
+        if (DoAnalysisOnly)
+        {
+            return node;
+        }
+
+        return base.VisitArgument(node);
     }
 
     public override SyntaxNode? VisitArgumentList(ArgumentListSyntax node)
@@ -368,6 +422,39 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         }
 
         return base.VisitArgumentList(node);
+    }
+
+    public override SyntaxNode? VisitTupleExpression(TupleExpressionSyntax node)
+    {
+        if (node.IsSingleLine(cancellationToken: _cancellationToken)
+            || CheckNothingButTriviaInFront(node.CloseParenToken)
+        )
+        {
+            return base.VisitTupleExpression(node);
+        }
+
+        ArgumentSyntax lastArgument = node.Arguments.Last();
+
+        ArgumentSyntax newLastArgument =
+            lastArgument.WithTrailingTrivia(
+                lastArgument.GetTrailingTrivia().AppendNewLine(_newLine)
+            );
+
+        node =
+            node.Update(
+                node.OpenParenToken,
+                node.Arguments.Replace(lastArgument, newLastArgument),
+                node.CloseParenToken
+            );
+
+        ChangesApplied = true;
+        // Immediate stop if at least one change was applied
+        if (DoAnalysisOnly)
+        {
+            return node;
+        }
+
+        return base.VisitTupleExpression(node);
     }
 
     private SyntaxNodeOrToken? ReformatLeadingTrivia(

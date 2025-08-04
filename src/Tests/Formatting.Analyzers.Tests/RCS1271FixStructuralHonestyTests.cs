@@ -128,7 +128,7 @@ public class RCS1271FixStructuralHonestyTests :
             int result [|= [|await [|MyMethodAsync(
                     1)|]|]|];
 
-            Task<int> MyMethodAsync(int i)=> Task.FromResult(1);
+            Task<int> MyMethodAsync(int i) => Task.FromResult(1);
             """,
             """
             using System;
@@ -139,7 +139,7 @@ public class RCS1271FixStructuralHonestyTests :
                     1
                 );
 
-            Task<int> MyMethodAsync(int i)=> Task.FromResult(1);
+            Task<int> MyMethodAsync(int i) => Task.FromResult(1);
             """,
             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
         );
@@ -690,7 +690,7 @@ public class RCS1271FixStructuralHonestyTests :
             using System;
             using System.Threading.Tasks;
 
-            [|await [|MyMethodAsync([|async (int a, int b, int c) => 
+            [|await [|MyMethodAsync([|async (int a, int b, int c) =>
             [|await Task.Run(() => 10)|]|])|]|];
 
             Task<int> MyMethodAsync(Func<int, int, int, Task<int>> f)
@@ -701,7 +701,7 @@ public class RCS1271FixStructuralHonestyTests :
             using System.Threading.Tasks;
 
             await MyMethodAsync(
-                async (int a, int b, int c) => 
+                async (int a, int b, int c) =>
                     await Task.Run(() => 10)
             );
 
@@ -1325,6 +1325,31 @@ public class RCS1271FixStructuralHonestyTests :
             Func<int, int, int> myFunc =
                 (int a, int b) =>
                     a + b;
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Lamba_assignment_async_Func_with_two_params()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            Func<int, int, Task<int>> myFunc [|= [|async (int a, int b) =>
+            [|await Task.FromResult(a + b)|]|]|];
+            """,
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            Func<int, int, Task<int>> myFunc =
+                async (int a, int b) =>
+                    await Task.FromResult(a + b);
             """,
             options: Options.WithCompilationOptions(
                 Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
@@ -2160,131 +2185,269 @@ public class RCS1271FixStructuralHonestyTests :
                 )
         );
     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_delegate()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             using System;
-//
-//             Func<int, int> square = [|delegate(int x)
-//             {
-//                 return x * x;
-//             }|];
-//             """,
-//             """
-//             using System;
-//
-//             Func<int, int> square =
-//                 delegate(int x)
-//                 {
-//                     return x * x;
-//                 };
-//             """,
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_linq_expression()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             using System.Collections.Generic;
-//             using System.Linq;
-//
-//             List<(string Name, string Value, bool IsValid)> collection = [];
-//
-//             var query = [|from item in collection
-//                 where item.IsValid
-//                 select [|new
-//                 {
-//                     Name = item.Name,
-//                     Value = item.Value
-//                 }|]|];
-//             """,
-//             """
-//             using System.Collections.Generic;
-//             using System.Linq;
-//
-//             List<(string Name, string Value, bool IsValid)> collection = [];
-//
-//             var query =
-//                 from item in collection
-//                 where item.IsValid
-//                 select
-//                     new
-//                     {
-//                         Name = item.Name,
-//                         Value = item.Value
-//                     };
-//             """,
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_aligned_linq_expression()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             using System.Collections.Generic;
-//             using System.Linq;
-//
-//             List<(string Name, string Value, bool IsValid)> collection = [];
-//
-//             var query = [|from item in collection
-//                         where item.IsValid
-//                         select [|new
-//                         {
-//                             Name = item.Name,
-//                             Value = item.Value
-//                         }|]|];
-//             """,
-//             """
-//             using System.Collections.Generic;
-//             using System.Linq;
-//
-//             List<(string Name, string Value, bool IsValid)> collection = [];
-//
-//             var query =
-//                 from item in collection
-//                 where item.IsValid
-//                 select
-//                     new
-//                     {
-//                         Name = item.Name,
-//                         Value = item.Value
-//                     };
-//             """,
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_anonymous_object()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             var person = [|new
-//             {
-//                 Name = "John",
-//                 Age = 30
-//             }|];
-//             """,
-//             """
-//             var person =
-//                 new
-//                 {
-//                     Name = "John",
-//                     Age = 30
-//                 };
-//             """,
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Delegate_assignment_one_params()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System;
+
+            Func<int, int> square [|= delegate(int x)
+            {
+                return x * x;
+            }|];
+            """,
+            """
+            using System;
+
+            Func<int, int> square =
+                delegate(int x)
+                {
+                    return x * x;
+                };
+            """,
+            options:
+                Options.WithCompilationOptions(
+                    Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+                )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Delegate_assignment_async_one_params()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            Func<int, Task<int>> square [|= async delegate(int x)
+            {
+                return await Task.Run(() => x * x);
+            }|];
+            """,
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            Func<int, Task<int>> square =
+                async delegate(int x)
+                {
+                    return await Task.Run(() => x * x);
+                };
+            """,
+            options:
+                Options.WithCompilationOptions(
+                    Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+                )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Anonymous_object_instantiation()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            var person [|= new
+            {
+                Name = "John",
+                Age = 30
+            }|];
+            """,
+            """
+            var person =
+                new
+                {
+                    Name = "John",
+                    Age = 30
+                };
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Anonymous_object_instantiation_brace_on_the_same_line()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            var person [|= [|new {
+                Name = "John",
+                Age = 30
+            }|]|];
+            """,
+            """
+            var person =
+                new
+                {
+                    Name = "John",
+                    Age = 30
+                };
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Anonymous_single_line_object_instantiation()
+    {
+        await VerifyNoDiagnosticAsync(
+            """
+            var person = new { Name = "John", Age = 30 };
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task SwitchExpression()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            int x = 1;
+            var result [|= x switch
+            {
+                1 => "One",
+                2 => "Two",
+                _ => "Other"
+            }|];
+            [|result = x switch
+            {
+                1 => "One",
+                2 => "Two",
+                _ => "Other"
+            }|];
+            """,
+            """
+            int x = 1;
+            var result =
+                x switch
+                {
+                    1 => "One",
+                    2 => "Two",
+                    _ => "Other"
+                };
+            result =
+                x switch
+                {
+                    1 => "One",
+                    2 => "Two",
+                    _ => "Other"
+                };
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Tuple_instantiation()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            var person [|= (
+                Name: "John",
+                Age: 30
+            )|];
+            """,
+            """
+            var person =
+                (
+                    Name: "John",
+                    Age: 30
+                );
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Tuple_instantiation_single_line()
+    {
+        await VerifyNoDiagnosticAsync(
+            """
+            var person = (Name: "John", Age: 30);
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Tuple_instantiation_with_nesting_anonymous_object()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            var person [|= [|(
+                Name: "John",
+                Age: 30,
+                Sister: [|new {
+                    Name = "Jane",
+                }|]
+            )|]|];
+            """,
+            """
+            var person =
+                (
+                    Name: "John",
+                    Age: 30,
+                    Sister:
+                        new
+                        {
+                            Name = "Jane",
+                        }
+                );
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Tuple_instantiation_with_nesting_tuple()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            var person [|= [|(
+                Name: "John",
+                Age: 30,
+                Sister: [|(
+                    Name: "Jane",
+                    Age: 20)|]
+            )|]|];
+            """,
+            """
+            var person =
+                (
+                    Name: "John",
+                    Age: 30,
+                    Sister:
+                        (
+                            Name: "Jane",
+                            Age: 20
+                        )
+                );
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+
+
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
 //     public async Task Fixes_Structural_Honesty_for_new_array()
 //     {
@@ -2386,54 +2549,37 @@ public class RCS1271FixStructuralHonestyTests :
 //     }
 //
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_switch_expression()
+//     public async Task Fixes_Structural_Honesty_for_linq_expression()
 //     {
 //         await VerifyDiagnosticAndFixAsync(
 //             """
-//             int x = 1;
-//             var result = [|x switch
-//             {
-//                 1 => "One",
-//                 2 => "Two",
-//                 _ => "Other"
-//             }|];
-//             """,
-//             """
-//             int x = 1;
-//             var result =
-//                 x switch
-//                 {
-//                     1 => "One",
-//                     2 => "Two",
-//                     _ => "Other"
-//                 };
-//             """,
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
+//             using System.Collections.Generic;
+//             using System.Linq;
 //
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_switch_expression2()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//                 int x = 1;
-//                 var result =
-//             [|x switch
-//                         {
-//                             1 => "One",
-//                             2 => "Two",
-//                             _ => "Other"
-//                         }|];
+//             List<(string Name, string Value, bool IsValid)> collection = [];
+//
+//             var query = [|from item in collection
+//                 where item.IsValid
+//                 select [|new
+//                 {
+//                     Name = item.Name,
+//                     Value = item.Value
+//                 }|]|];
 //             """,
 //             """
-//                 int x = 1;
-//                 var result =
-//                     x switch
+//             using System.Collections.Generic;
+//             using System.Linq;
+//
+//             List<(string Name, string Value, bool IsValid)> collection = [];
+//
+//             var query =
+//                 from item in collection
+//                 where item.IsValid
+//                 select
+//                     new
 //                     {
-//                         1 => "One",
-//                         2 => "Two",
-//                         _ => "Other"
+//                         Name = item.Name,
+//                         Value = item.Value
 //                     };
 //             """,
 //             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
@@ -2441,60 +2587,42 @@ public class RCS1271FixStructuralHonestyTests :
 //     }
 //
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_value_tuple()
+//     public async Task Fixes_Structural_Honesty_for_aligned_linq_expression()
 //     {
 //         await VerifyDiagnosticAndFixAsync(
 //             """
-//             var person = [|(
-//                 Name: "John",
-//                 Age: 30
-//             )|];
-//             var person2 = [|(
-//                 Name: "John",
-//                 Age: 30,
-//                 Sister: [|new {
-//                     Name = "Jane",
-//                 }|]
-//             )|];
-//             var person3 = [|(
-//                 Name: "John",
-//                 Age: 30,
-//                 Sister: [|(
-//                     Name: "Jane",
-//                     Age: 20)|]
-//             )|];
+//             using System.Collections.Generic;
+//             using System.Linq;
+//
+//             List<(string Name, string Value, bool IsValid)> collection = [];
+//
+//             var query = [|from item in collection
+//                         where item.IsValid
+//                         select [|new
+//                         {
+//                             Name = item.Name,
+//                             Value = item.Value
+//                         }|]|];
 //             """,
 //             """
-//             var person =
-//                 (
-//                     Name: "John",
-//                     Age: 30
-//                 );
-//             var person2 =
-//                 (
-//                     Name: "John",
-//                     Age: 30,
-//                     Sister:
-//                         new
-//                         {
-//                             Name = "Jane",
-//                         }
-//                 );
-//             var person3 =
-//                 (
-//                     Name: "John",
-//                     Age: 30,
-//                     Sister:
-//                         (
-//                             Name: "Jane",
-//                             Age: 20
-//                         )
-//                 );
+//             using System.Collections.Generic;
+//             using System.Linq;
+//
+//             List<(string Name, string Value, bool IsValid)> collection = [];
+//
+//             var query =
+//                 from item in collection
+//                 where item.IsValid
+//                 select
+//                     new
+//                     {
+//                         Name = item.Name,
+//                         Value = item.Value
+//                     };
 //             """,
 //             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
 //         );
 //     }
-//
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
 //     public async Task No_diagnostic_for_single_lined_value_tuple()
 //     {
@@ -3209,4 +3337,7 @@ public class RCS1271FixStructuralHonestyTests :
     // documentation trivia
     // tuples with named fields
     // relaxed option?
+    // Method with passed tuple
+    // Multiline lambda parameters
+    // Attribute and Attribute arguments
 }
