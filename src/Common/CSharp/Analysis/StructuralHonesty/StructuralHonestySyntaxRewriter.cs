@@ -129,6 +129,21 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             }
 
             string expectedLastIndentation = parentIndentation;
+            if (token.Kind()
+                is not (
+                    SyntaxKind.CloseParenToken
+                    or SyntaxKind.CloseBracketToken
+                    or SyntaxKind.CloseBraceToken
+                    // if OpenParenToken has nothing in front, then it is the weird case of placing the open paren to the new line.
+                    // in this case the ArgumentList has been added to the indentation cache,
+                    // and as a result, the parent indentation is already increased
+                    or SyntaxKind.OpenParenToken
+                )
+            )
+            {
+                // If the token is not a closing parent, bracket or brace, then it should be indented
+                expectedLastIndentation += _singleIndentation;
+            }
 
             SyntaxNodeOrToken? newNodeOrToken = ReformatLeadingTrivia(token, expectedIndentation, expectedLastIndentation);
             // Are there changes?
@@ -555,7 +570,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         }
 
         LinePosition nodeLinePosition = textLines.GetLinePosition(nodeOrToken.SpanStart);
-        if (nodeLinePosition.Character == 0)
+        if (nodeLinePosition != default && nodeLinePosition.Character == 0)
         {
             return true;
         }
@@ -568,10 +583,15 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             return true;
         }
 
-        bool nothingButWhitespacesInFront = CheckNothingButWhitespacesInFront(textLines, nodeOrToken.SpanStart);
-        if (nothingButWhitespacesInFront)
+        // If the span starts with 0, then it likely means that the nodeOrToken was already changed before,
+        // therefore CheckNothingButWhitespacesInFront will always return true. So we cannot use this check.
+        if (nodeOrToken.SpanStart > 0)
         {
-            return true;
+            bool nothingButWhitespacesInFront = CheckNothingButWhitespacesInFront(textLines, nodeOrToken.SpanStart);
+            if (nothingButWhitespacesInFront)
+            {
+                return true;
+            }
         }
 
         if (nodeOrToken.IsToken)
