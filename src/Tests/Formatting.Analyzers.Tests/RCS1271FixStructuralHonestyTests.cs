@@ -13,34 +13,6 @@ public class RCS1271FixStructuralHonestyTests :
 {
     public override DiagnosticDescriptor Descriptor { get; } = DiagnosticRules.FixStructuralHonesty;
 
-//      [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//      public async Task Test()
-//      {
-//          await VerifyDiagnosticAndFixAsync(
-//              """
-//              using System;
-//              using System.Threading.Tasks;
-//
-//              int result [|= [|await [|MyMethodAsync(
-//                      1)|]|]|];
-//
-//              Task<int> MyMethodAsync(int i)=> Task.FromResult(1);
-//              """,
-//              """
-//              using System;
-//              using System.Threading.Tasks;
-//
-//              int result =
-//                  await MyMethodAsync(
-//                      1
-//                  );
-//
-//              Task<int> MyMethodAsync(int i)=> Task.FromResult(1);
-//              """,
-//              options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//          );
-//      }
-
     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
     public async Task AwaitExpression_Method_SingleLine()
     {
@@ -1873,131 +1845,321 @@ public class RCS1271FixStructuralHonestyTests :
                 )
         );
     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task No_Structural_Honesty_diagnostic_for_single_lined_func_that_accepting_single_lined_new_object()
-//     {
-//         await VerifyNoDiagnosticAsync(
-//             """
-//             using System;
-//             using System.Threading.Tasks;
-//
-//             int myVariable = await MyMethodAsync(new MyType() { Property1 = 1, Property2 = 2 });
-//
-//             Task<int> MyMethodAsync(MyType mt) => Task.FromResult(1);
-//             """,
-//             additionalFiles:
-//                 [
-//                     """
-//                     public sealed class MyType
-//                     {
-//                         public required int Property1 { get; init; }
-//                         public required int Property2 { get; init; }
-//                     }
-//                     """
-//                 ],
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
 
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_new_record_with_with()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             var person = [|new Person("John", 30) with
-//             {
-//                 Age = 31
-//             }|];
-//             var person2 = [|person with
-//             {
-//                 Age = 31
-//             }|];
-//             """,
-//             """
-//             var person =
-//                 new Person("John", 30) with
-//                 {
-//                     Age = 31
-//                 };
-//             var person2 =
-//                 person with
-//                 {
-//                     Age = 31
-//                 };
-//             """,
-//             additionalFiles:
-//                 new (string source, string expectedSource)[]
-//                 {
-//                     (
-//                         source:
-//                         "public sealed record Person(string Name, int Age);",
-//                         expectedSource: null
-//                     )
-//                 },
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_new_object_that_accepting_lambda()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             using System;
-//
-//             var person = [|new Person([|(int v1, int v2) =>
-//             {
-//                 return v1 + v2;
-//             }|])|];
-//             var person2 = [|new Person([|(int v1, int v2) => {
-//                 return v1 + v2;
-//             }|])|];
-//             var person3 = [|new Person([|(int v1, int v2) =>
-//                 v1 + v2|]
-//             )|];
-//             var person4 = new Person((int v1, int v2) => v1 + v2);
-//             """,
-//             """
-//             using System;
-//
-//             var person =
-//                 new Person(
-//                     (int v1, int v2) =>
-//                     {
-//                         return v1 + v2;
-//                     }
-//                 );
-//             var person2 =
-//                 new Person(
-//                     (int v1, int v2) =>
-//                     {
-//                         return v1 + v2;
-//                     }
-//                 );
-//             var person3 =
-//                 new Person(
-//                     (int v1, int v2) =>
-//                         v1 + v2
-//                 );
-//             var person4 = new Person((int v1, int v2) => v1 + v2);
-//             """,
-//             additionalFiles:
-//                 new (string source, string expectedSource)[]
-//                 {
-//                     (
-//                         source:
-//                             """
-//                             using System;
-//
-//                             public sealed record Person(Func<int, int, int> Action);
-//                             """,
-//                         expectedSource: null
-//                     )
-//                 },
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task AwaitExpression_single_line_Method_with_new_single_lined_class_instantiation()
+    {
+        await VerifyNoDiagnosticAsync(
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            int myVariable = await MyMethodAsync(new MyType() { Property1 = 1, Property2 = 2 });
+
+            Task<int> MyMethodAsync(MyType mt) => Task.FromResult(1);
+            """,
+            additionalFiles:
+                [
+                    """
+                    public sealed class MyType
+                    {
+                        public required int Property1 { get; init; }
+                        public required int Property2 { get; init; }
+                    }
+                    """
+                ],
+            options:
+                Options.WithCompilationOptions(
+                    Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+                )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task New_record_instantiation_with_With_expression()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            var person [|= new Person("John", 30) with
+            {
+                Age = 31
+            }|];
+            """,
+            """
+            var person =
+                new Person("John", 30) with
+                {
+                    Age = 31
+                };
+            """,
+            additionalFiles:
+                new(string source, string expectedSource)[]
+                {
+                    (
+                        source:
+                        "public sealed record Person(string Name, int Age);",
+                        expectedSource: null
+                    )
+                },
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task New_record_from_other_with_With_expression()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            var person = new Person("John", 30);
+            var person2 [|= person with
+            {
+                Age = 31
+            }|];
+            """,
+            """
+            var person = new Person("John", 30);
+            var person2 =
+                person with
+                {
+                    Age = 31
+                };
+            """,
+            additionalFiles:
+                new(string source, string expectedSource)[]
+                {
+                    (
+                        source:
+                        "public sealed record Person(string Name, int Age);",
+                        expectedSource: null
+                    )
+                },
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task New_record_instantiation_with_lambda_parameter_with_statement_body()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System;
+
+            var person [|= [|new Person([|(int v1, int v2) => {
+                return v1 + v2;
+            }|])|]|];
+            """,
+            """
+            using System;
+
+            var person =
+                new Person(
+                    (int v1, int v2) =>
+                    {
+                        return v1 + v2;
+                    }
+                );
+            """,
+            additionalFiles:
+                new(string source, string expectedSource)[]
+                {
+                    (
+                        source:
+                        """
+                        using System;
+
+                        public sealed record Person(Func<int, int, int> Action);
+                        """,
+                        expectedSource: null
+                    )
+                },
+            options:
+                Options.WithCompilationOptions(
+                    Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+                )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task New_record_instantiation_with_async_lambda_parameter_with_statement_body()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            var person [|= [|new Person([|async (int v1, int v2) => {
+                return await Task.Run(() => v1 + v2);
+            }|])|]|];
+            """,
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            var person =
+                new Person(
+                    async (int v1, int v2) =>
+                    {
+                        return await Task.Run(() => v1 + v2);
+                    }
+                );
+            """,
+            additionalFiles:
+                new(string source, string expectedSource)[]
+                {
+                    (
+                        source:
+                        """
+                        using System;
+                        using System.Threading.Tasks;
+
+                        public sealed record Person(Func<int, int, Task<int>> Action);
+                        """,
+                        expectedSource: null
+                    )
+                },
+            options:
+                Options.WithCompilationOptions(
+                    Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+                )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task New_record_instantiation_with_lambda_parameter()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System;
+
+            var person [|= [|new Person((int v1, int v2) =>
+                v1 + v2
+            )|]|];
+            """,
+            """
+            using System;
+
+            var person =
+                new Person(
+                    (int v1, int v2) =>
+                        v1 + v2
+                );
+            """,
+            additionalFiles:
+                new(string source, string expectedSource)[]
+                {
+                    (
+                        source:
+                        """
+                        using System;
+
+                        public sealed record Person(Func<int, int, int> Action);
+                        """,
+                        expectedSource: null
+                    )
+                },
+            options:
+                Options.WithCompilationOptions(
+                    Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+                )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task New_record_instantiation_with_async_lambda_parameter()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            var person [|= [|new Person(async (int v1, int v2) =>
+                await Task.Run(() => v1 + v2)
+            )|]|];
+            """,
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            var person =
+                new Person(
+                    async (int v1, int v2) =>
+                        await Task.Run(() => v1 + v2)
+                );
+            """,
+            additionalFiles:
+                new(string source, string expectedSource)[]
+                {
+                    (
+                        source:
+                        """
+                        using System;
+                        using System.Threading.Tasks;
+
+                        public sealed record Person(Func<int, int, Task<int>> Action);
+                        """,
+                        expectedSource: null
+                    )
+                },
+            options:
+                Options.WithCompilationOptions(
+                    Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+                )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task New_record_instantiation_with_single_line_lambda_parameter()
+    {
+        await VerifyNoDiagnosticAsync(
+            """
+            using System;
+
+            var person = new Person((int v1, int v2) => v1 + v2);
+            """,
+            additionalFiles:
+                [
+                    """
+                    using System;
+
+                    public sealed record Person(Func<int, int, int> Action);
+                    """
+                ],
+            options:
+                Options.WithCompilationOptions(
+                    Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+                )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task New_record_instantiation_with_async_single_line_lambda_parameter()
+    {
+        await VerifyNoDiagnosticAsync(
+            """
+            using System;
+            using System.Threading.Tasks;
+
+            var person = new Person(async (int v1, int v2) => await Task.Run(() => v1 + v2));
+            """,
+            additionalFiles:
+                [
+                    """
+                    using System;
+                    using System.Threading.Tasks;
+
+                    public sealed record Person(Func<int, int, Task<int>> Action);
+                    """
+                ],
+            options:
+                Options.WithCompilationOptions(
+                    Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+                )
+        );
+    }
 //
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
 //     public async Task Fixes_Structural_Honesty_for_delegate()
@@ -3046,4 +3208,5 @@ public class RCS1271FixStructuralHonestyTests :
     // directives in trivia
     // documentation trivia
     // tuples with named fields
+    // relaxed option?
 }

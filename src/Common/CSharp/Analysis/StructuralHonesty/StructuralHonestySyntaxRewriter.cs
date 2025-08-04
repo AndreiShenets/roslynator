@@ -75,7 +75,12 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         string expectedIndentation = GetParentIndentation(node);
 
         if (nothingButTriviaInFront
-            && node.Kind() is not (SyntaxKind.Block or SyntaxKind.ObjectInitializerExpression)
+            && node.Kind()
+                is not (
+                    SyntaxKind.Block
+                    or SyntaxKind.ObjectInitializerExpression
+                    or SyntaxKind.WithInitializerExpression
+                )
         )
         {
             expectedIndentation += _singleIndentation;
