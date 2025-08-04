@@ -561,8 +561,7 @@ public class RCS1271FixStructuralHonestyTests :
     }
 
     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task
-        AwaitExpression_Method_with_simple_async_lambda_parameter_single_line_next_after_assignment_formatted()
+    public async Task AwaitExpression_Method_with_simple_async_lambda_parameter_single_line_next_after_assignment_formatted()
     {
         await VerifyNoDiagnosticAsync(
             """
@@ -1540,53 +1539,108 @@ public class RCS1271FixStructuralHonestyTests :
         );
     }
 
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_lambda_variable_declaration()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             using System;
-//
-//             Action<int, int, int> myAction = [|(int a, int b, int c) =>
-//             {
-//                 // ...
-//             }|];
-//             Action<int, int, int> myAction2 = [|(int a, int b, int c) => {
-//                 // ...
-//             }|];
-//             """,
-//             """
-//             using System;
-//
-//             Action<int, int, int> myAction =
-//                 (int a, int b, int c) =>
-//                 {
-//                     // ...
-//                 };
-//             Action<int, int, int> myAction2 =
-//                 (int a, int b, int c) =>
-//                 {
-//                     // ...
-//                 };
-//             """,
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task No_diagnostic_for_single_lined_lambda_variable_declaration()
-//     {
-//         await VerifyNoDiagnosticAsync(
-//             """
-//             using System;
-//
-//             Action<int, int, int> myAction = (int a, int b, int c) => { /* ... */ };
-//             Action<int, int, int> myAction2 =
-//                 (int a, int b, int c) => { /* ... */ };
-//             """,
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task New_class_instantiation_with_nested_new_class_instantiation()
+    {
+         await VerifyDiagnosticAndFixAsync(
+             """
+             MyType myVariable [|= [|new MyType
+             {
+                 Property1 = 1,
+                 Property2 = 2,
+                 [|Nested = new MyType
+                 {
+                     Property1 = 3,
+                     Property2 = 4,
+                     Nested = null
+                 }|]
+             }|]|];
+             """,
+             """
+             MyType myVariable = 
+                 new MyType
+                 {
+                     Property1 = 1,
+                     Property2 = 2,
+                     Nested = 
+                         new MyType
+                         {
+                             Property1 = 3,
+                             Property2 = 4,
+                             Nested = null
+                         }
+                 };
+             """,
+             additionalFiles:
+                 new (string source, string expectedSource)[]
+                 {
+                     (
+                         source:
+                         """
+                         public sealed class MyType
+                         {
+                             public required int Property1 { get; init; }
+                             public required int Property2 { get; init; }
+                             public required MyType Nested { get; init; }
+                         }
+                         """,
+                         expectedSource: null
+                     )
+                 },
+             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+         );
+    }
+
+     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+     public async Task New_class_instantiation_with_nested_new_class_instantiation_open_brace_on_the_same_line()
+     {
+         await VerifyDiagnosticAndFixAsync(
+             """
+             MyType myVariable [|= [|new MyType {
+                         [|Property1 = 1|],
+                         [|Property2 = 2|],
+             [|Nested = new MyType
+             {
+                 Property1 = 3,
+                 Property2 = 4,
+                 Nested = null
+             }|]
+                     }|]|];
+             """,
+             """
+             MyType myVariable = 
+                 new MyType 
+                 {
+                     Property1 = 1,
+                     Property2 = 2,
+                     Nested = 
+                         new MyType
+                         {
+                             Property1 = 3,
+                             Property2 = 4,
+                             Nested = null
+                         }
+                 };
+             """,
+             additionalFiles:
+                 new (string source, string expectedSource)[]
+                 {
+                     (
+                         source:
+                         """
+                         public sealed class MyType
+                         {
+                             public required int Property1 { get; init; }
+                             public required int Property2 { get; init; }
+                             public required MyType Nested { get; init; }
+                         }
+                         """,
+                         expectedSource: null
+                     )
+                 },
+             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+         );
+     }
 //
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
 //     public async Task Fixes_Structural_Honesty_for_func_returning_variable_and_accepting_new_object()
@@ -1737,82 +1791,7 @@ public class RCS1271FixStructuralHonestyTests :
 //             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
 //         );
 //     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_new_object()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             MyType myVariable = [|new MyType
-//             {
-//                 Property1 = 1,
-//                 Property2 = 2,
-//                 Nested = [|new MyType
-//                 {
-//                     Property1 = 3,
-//                     Property2 = 4,
-//                     Nested = null
-//                 }|]
-//             }|];
-//             MyType myVariable2 = [|new MyType {
-//                         Property1 = 1,
-//                         Property2 = 2,
-//             Nested = [|new MyType
-//             {
-//                 Property1 = 3,
-//                 Property2 = 4,
-//                 Nested = null
-//             }|]
-//                     }|];
-//             """,
-//             """
-//             MyType myVariable =
-//                 new MyType
-//                 {
-//                     Property1 = 1,
-//                     Property2 = 2,
-//                     Nested =
-//                         new MyType
-//                         {
-//                             Property1 = 3,
-//                             Property2 = 4,
-//                             Nested = null
-//                         }
-//                 };
-//             MyType myVariable2 =
-//                 new MyType
-//                 {
-//                     Property1 = 1,
-//                     Property2 = 2,
-//                     Nested =
-//                         new MyType
-//                         {
-//                             Property1 = 3,
-//                             Property2 = 4,
-//                             Nested = null
-//                         }
-//                 };
-//             """,
-//             additionalFiles:
-//                 new (string source, string expectedSource)[]
-//                 {
-//                     (
-//                         source:
-//                         """
-//                         public sealed class MyType
-//                         {
-//                             public required int Property1 { get; init; }
-//                             public required int Property2 { get; init; }
-//                             public required MyType Nested { get; init; }
-//                         }
-//                         """,
-//                         expectedSource: null
-//                     )
-//                 },
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
+
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
 //     public async Task Fixes_Structural_Honesty_for_new_record_with_with()
 //     {

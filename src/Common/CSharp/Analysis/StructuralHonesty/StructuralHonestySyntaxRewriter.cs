@@ -75,7 +75,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         string expectedIndentation = GetParentIndentation(node);
 
         if (nothingButTriviaInFront
-            && node.Kind() is not SyntaxKind.Block
+            && node.Kind() is not (SyntaxKind.Block or SyntaxKind.ObjectInitializerExpression)
         )
         {
             expectedIndentation += _singleIndentation;
@@ -138,6 +138,8 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                     // in this case the ArgumentList has been added to the indentation cache,
                     // and as a result, the parent indentation is already increased
                     or SyntaxKind.OpenParenToken
+                    // { should be placed on the parent level
+                    or SyntaxKind.OpenBraceToken
                 )
             )
             {
@@ -257,6 +259,35 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         }
 
         return base.VisitEqualsValueClause(node);
+    }
+
+    public override SyntaxNode? VisitAssignmentExpression(AssignmentExpressionSyntax node)
+    {
+        bool equalsTokenAndValueOnDifferentLines = !CheckOnTheSameLine(node.SyntaxTree, node.OperatorToken.Span, node.Right.Span);
+
+        // Either the equals token and value are on the different lines
+        if (equalsTokenAndValueOnDifferentLines
+            // Or they are on the same line, but the value is single-lined
+            || node.Right.IsSingleLine(cancellationToken: _cancellationToken)
+        )
+        {
+            return base.VisitAssignmentExpression(node);
+        }
+
+        SyntaxToken newOperatorToken =
+            node.OperatorToken.WithTrailingTrivia(
+                node.OperatorToken.TrailingTrivia.Append(_newLine)
+            );
+        node = node.WithOperatorToken(newOperatorToken);
+
+        ChangesApplied = true;
+        // Immediate stop if at least one change was applied
+        if (DoAnalysisOnly)
+        {
+            return node;
+        }
+
+        return base.VisitAssignmentExpression(node);
     }
 
     public override SyntaxNode? VisitArgumentList(ArgumentListSyntax node)
@@ -742,14 +773,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             return null;
         }
 
-        ChildSyntaxList tokenParentChildren = tokenParent.ChildNodesAndTokens();
-
         SyntaxNode? parent = nextToken.Parent;
         while (parent is not null)
         {
-            if (ReferenceEquals(parent, tokenParent)
-                || tokenParentChildren.Any(tpc => tpc.IsNode && ReferenceEquals(tpc.AsNode(), parent))
-            )
+            if (CheckNodeInTheParentTree(token, parent))
             {
                 return parent;
             }
@@ -758,6 +785,26 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         }
 
         return null;
+
+        static bool CheckNodeInTheParentTree(SyntaxToken token, SyntaxNode node)
+        {
+            SyntaxNode? tokenParent = token.Parent;
+            while (tokenParent is not null)
+            {
+                ChildSyntaxList tokenParentChildren = tokenParent.ChildNodesAndTokens();
+
+                if (ReferenceEquals(node, tokenParent)
+                    || tokenParentChildren.Any(tpc => tpc.IsNode && ReferenceEquals(tpc.AsNode(), node))
+                )
+                {
+                    return true;
+                }
+
+                tokenParent = tokenParent.Parent;
+            }
+
+            return false;
+        }
     }
 }
 
