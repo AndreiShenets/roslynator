@@ -3093,44 +3093,311 @@ public class RCS1271FixStructuralHonestyTests :
              options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
          );
      }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Interpolated_string_single_line_interpolation()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System.Linq;
+
+            int? x = 1;
+            var message [|= $@"User details:
+            {Enumerable.Range(1, 10).Select(i => x.HasValue ? $"Value: {x.Value + i}" : "No value")}"|];
+            """,
+            """
+            using System.Linq;
+
+            int? x = 1;
+            var message =
+                $@"User details:
+            {Enumerable.Range(1, 10).Select(i => x.HasValue ? $"Value: {x.Value + i}" : "No value")}";
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Interpolated_string_multiline_interpolation()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System.Linq;
+
+            int? x = 1;
+            var message [|= $@"User details:
+            {
+                [|Enumerable.Range(1, 10).Select(i =>
+                    x.HasValue ? $"Value: {x.Value + i}" : "No value")|]
+            }"|];
+            """,
+            """
+            using System.Linq;
+
+            int? x = 1;
+            var message =
+                $@"User details:
+            {
+                Enumerable.Range(1, 10).Select(
+                    i =>
+                        x.HasValue ? $"Value: {x.Value + i}" : "No value"
+                )
+            }";
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Raw_string()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """"
+            string s [|= """
+                         abc
+                             cde
+                         fgh
+                         """|];
+            """",
+            """"
+            string s =
+                """
+                abc
+                    cde
+                fgh
+                """;
+            """",
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Raw_string_with_interpolation()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """"
+            int x = 10;
+            string s [|= $"""
+                         {x}abc
+                             {x}cde{x}
+                         fgh{x}
+                         """|];
+            """",
+            """"
+            int x = 10;
+            string s =
+                $"""
+                {x}abc
+                    {x}cde{x}
+                fgh{x}
+                """;
+            """",
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Raw_string_utf8()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """"
+            var s [|= """
+                    abc
+                        cde
+                    """u8|];
+            """",
+            """"
+            var s =
+                """
+                abc
+                    cde
+                """u8;
+            """",
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
 //
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_aligned_linq_expression()
+//     public async Task Fixes_Structural_Honesty_for_raw_string_if_parameter()
 //     {
 //         await VerifyDiagnosticAndFixAsync(
-//             """
-//             using System.Collections.Generic;
-//             using System.Linq;
-//
-//             List<(string Name, string Value, bool IsValid)> collection = [];
-//
-//             var query = [|from item in collection
-//                         where item.IsValid
-//                         select [|new
-//                         {
-//                             Name = item.Name,
-//                             Value = item.Value
-//                         }|]|];
-//             """,
-//             """
-//             using System.Collections.Generic;
-//             using System.Linq;
-//
-//             List<(string Name, string Value, bool IsValid)> collection = [];
-//
-//             var query =
-//                 from item in collection
-//                 where item.IsValid
-//                 select
-//                     new
-//                     {
-//                         Name = item.Name,
-//                         Value = item.Value
-//                     };
-//             """,
+//             """"
+//             [|C.Check([|"""
+//                 abc
+//                 cde
+//                 """|])|];
+//             """",
+//             """"
+//             C.Check(
+//                 """
+//                 abc
+//                 cde
+//                 """
+//             );
+//             """",
+//             additionalFiles:
+//                 new (string source, string expectedSource)[]
+//                 {
+//                     (
+//                         source:
+//                         """
+//                         public static class C {
+//                             public static bool Check(string s) => true;
+//                         }
+//                         """,
+//                         expectedSource: null
+//                     )
+//                 },
 //             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
 //         );
 //     }
+//
+//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+//     public async Task Fixes_Structural_Honesty_for_raw_string_if_named_parameter()
+//     {
+//         await VerifyDiagnosticAndFixAsync(
+//             """"
+//             [|C.Check(
+//                 s: "tst",
+//                 options: [|"""
+//                 abc
+//                 cde
+//                 """|])|];
+//             """",
+//             """"
+//             C.Check(
+//                 s: "tst",
+//                 options:
+//                     """
+//                     abc
+//                     cde
+//                     """
+//             );
+//             """",
+//             additionalFiles:
+//                 new (string source, string expectedSource)[]
+//                 {
+//                     (
+//                         source:
+//                         """
+//                         public static class C {
+//                             public static bool Check(string s, string options) => true;
+//                         }
+//                         """,
+//                         expectedSource: null
+//                     )
+//                 },
+//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+//         );
+//     }
+//
+//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+//     public async Task Fixes_Structural_Honesty_for_raw_strings_and_named_parameter()
+//     {
+//         await VerifyDiagnosticAndFixAsync(
+//             """"
+//             using System.Threading.Tasks;
+//
+//             Tst c = new();
+//             await c.Test();
+//
+//             public class Tst {
+//                 public async Task Test()
+//                 {
+//                     [|await C.Check([|"""
+//             class C
+//             {
+//                 void M()
+//                 {
+//                     var x = [|new[]|] { "" };
+//                 }
+//             }
+//             """|], [|"""
+//             class C
+//             {
+//                 void M()
+//                 {
+//                     var x = new string[] { "" };
+//                 }
+//             }
+//             """|], options: "tst")|];
+//                 }
+//             }
+//             """",
+//             """"
+//             using System.Threading.Tasks;
+//
+//             public class Tst {
+//                 public async Task Test()
+//                 {
+//                     await C.Check(
+//                         """
+//                         class C
+//                         {
+//                             void M()
+//                             {
+//                                 var x = [|new[]|] { "" };
+//                             }
+//                         }
+//                         """,
+//                         """
+//                         class C
+//                         {
+//                             void M()
+//                             {
+//                                 var x = new string[] { "" };
+//                             }
+//                         }
+//                         """, options: "tst"
+//                     );
+//                 }
+//             }
+//             );
+//             """",
+//             additionalFiles:
+//                 new (string source, string expectedSource)[]
+//                 {
+//                     (
+//                         source:
+//                         """
+//                         using System.Threading.Tasks;
+//
+//                         public static class C {
+//                             public static Task<bool> Check(string s, string t, string options) => Task.FromResult(true);
+//                         }
+//                         """,
+//                         expectedSource: null
+//                     )
+//                 },
+//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+//         );
+//     }
+//
+
+    // [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    // public async Task Binary_expression_assignment_to_variable()
+    // {
+    //     await VerifyDiagnosticAndFixAsync(
+    //         """
+    //         object obj = "abc";
+    //         var result [|= obj is string s
+    //             && s.Length == 10|];
+    //         """,
+    //         """
+    //         object obj = "abc";
+    //         var result =
+    //             obj is string
+    //             && s.Length == 10;
+    //         """,
+    //         options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+    //     );
+    // }
 
 //
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
@@ -3213,54 +3480,6 @@ public class RCS1271FixStructuralHonestyTests :
 //         );
 //     }
 
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_inside_interpolated_string()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             using System.Linq;
-//
-//             int? x = 1;
-//             var message = $@"User details:
-//             {
-//                 [|Enumerable.Range(1, 10).Select([|i =>
-//                     x.HasValue ? $"Value: {x.Value + i}" : "No value"|])|]
-//             }";
-//             """,
-//             """
-//             using System.Linq;
-//
-//             int? x = 1;
-//             var message = $@"User details:
-//             {
-//                 Enumerable.Range(1, 10).Select(
-//                     i =>
-//                         x.HasValue ? $"Value: {x.Value + i}" : "No value"
-//                 )
-//             }";
-//             """,
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task No_diagnostic_for_interpolated_string()
-//     {
-//         await VerifyNoDiagnosticAsync(
-//             """
-//             using System.Linq;
-//
-//             int? x = 1;
-//             var message = $@"User details:
-//             {
-//                 x.HasValue ? $"Value: {x.Value}" : "No value"
-//             }";
-//             var message2 = $@"User details: {
-//                 x.HasValue ? $"Value: {x.Value}" : "No value"
-//             }";
-//             """
-//         );
-//     }
 //
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
 //     public async Task Fixes_Structural_Honesty_for_lambda_function()
@@ -3304,48 +3523,7 @@ public class RCS1271FixStructuralHonestyTests :
 //             """
 //         );
 //     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_named_parameters()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             [|C.CheckOptionsCalculatedFor(
-//                 string.Empty,
-//                 option2: [|new {
-//                     i = 1,
-//                     b = 2
-//                 }|]
-//             )|];
-//             """,
-//             """
-//             C.CheckOptionsCalculatedFor(
-//                 string.Empty,
-//                 option2:
-//                     new
-//                     {
-//                         i = 1,
-//                         b = 2
-//                     }
-//             );
-//             """,
-//             additionalFiles:
-//                 new (string source, string expectedSource)[]
-//                 {
-//                     (
-//                         source:
-//                             """
-//                             public static class C {
-//                                 public static bool CheckOptionsCalculatedFor(string option1 = "", object option2 = null) => true;
-//                             }
-//                             """,
-//                         expectedSource: null
-//                     )
-//                 },
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
+
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
 //     public async Task Fixes_Structural_Honesty_for_chaining()
 //     {
@@ -3554,205 +3732,6 @@ public class RCS1271FixStructuralHonestyTests :
 //             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
 //         );
 //     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_raw_string()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """"
-//             string s = [|"""
-//                 abc
-//                 cde
-//                 """|];
-//             """",
-//             """"
-//             string s =
-//                 """
-//                 abc
-//                 cde
-//                 """;
-//             """",
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_raw_string_utf8()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """"
-//             var s = [|"""
-//                 abc
-//                 cde
-//                 """u8|];
-//             """",
-//             """"
-//             var s =
-//                 """
-//                 abc
-//                 cde
-//                 """u8;
-//             """",
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_raw_string_if_parameter()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """"
-//             [|C.Check([|"""
-//                 abc
-//                 cde
-//                 """|])|];
-//             """",
-//             """"
-//             C.Check(
-//                 """
-//                 abc
-//                 cde
-//                 """
-//             );
-//             """",
-//             additionalFiles:
-//                 new (string source, string expectedSource)[]
-//                 {
-//                     (
-//                         source:
-//                         """
-//                         public static class C {
-//                             public static bool Check(string s) => true;
-//                         }
-//                         """,
-//                         expectedSource: null
-//                     )
-//                 },
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_raw_string_if_named_parameter()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """"
-//             [|C.Check(
-//                 s: "tst",
-//                 options: [|"""
-//                 abc
-//                 cde
-//                 """|])|];
-//             """",
-//             """"
-//             C.Check(
-//                 s: "tst",
-//                 options:
-//                     """
-//                     abc
-//                     cde
-//                     """
-//             );
-//             """",
-//             additionalFiles:
-//                 new (string source, string expectedSource)[]
-//                 {
-//                     (
-//                         source:
-//                         """
-//                         public static class C {
-//                             public static bool Check(string s, string options) => true;
-//                         }
-//                         """,
-//                         expectedSource: null
-//                     )
-//                 },
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_raw_strings_and_named_parameter()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """"
-//             using System.Threading.Tasks;
-//
-//             Tst c = new();
-//             await c.Test();
-//
-//             public class Tst {
-//                 public async Task Test()
-//                 {
-//                     [|await C.Check([|"""
-//             class C
-//             {
-//                 void M()
-//                 {
-//                     var x = [|new[]|] { "" };
-//                 }
-//             }
-//             """|], [|"""
-//             class C
-//             {
-//                 void M()
-//                 {
-//                     var x = new string[] { "" };
-//                 }
-//             }
-//             """|], options: "tst")|];
-//                 }
-//             }
-//             """",
-//             """"
-//             using System.Threading.Tasks;
-//
-//             public class Tst {
-//                 public async Task Test()
-//                 {
-//                     await C.Check(
-//                         """
-//                         class C
-//                         {
-//                             void M()
-//                             {
-//                                 var x = [|new[]|] { "" };
-//                             }
-//                         }
-//                         """,
-//                         """
-//                         class C
-//                         {
-//                             void M()
-//                             {
-//                                 var x = new string[] { "" };
-//                             }
-//                         }
-//                         """, options: "tst"
-//                     );
-//                 }
-//             }
-//             );
-//             """",
-//             additionalFiles:
-//                 new (string source, string expectedSource)[]
-//                 {
-//                     (
-//                         source:
-//                         """
-//                         using System.Threading.Tasks;
-//
-//                         public static class C {
-//                             public static Task<bool> Check(string s, string t, string options) => Task.FromResult(true);
-//                         }
-//                         """,
-//                         expectedSource: null
-//                     )
-//                 },
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
 //     public async Task Fixes_Structural_Honesty_for_collection_expression_as_parameter()
 //     {
@@ -3806,5 +3785,7 @@ public class RCS1271FixStructuralHonestyTests :
     // ? Relaxed option
     // Constructor initializers  Constr() : base( something
     //                                      )
-    // Array as parammeter
+    // Array as parameter
+    // Interpolated multiline (by multiline code) string
+    // Interpolated verbatim string
 }

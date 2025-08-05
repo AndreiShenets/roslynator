@@ -58,7 +58,7 @@ public sealed class FixStructuralHonestyAnalyzer : BaseDiagnosticAnalyzer
             SyntaxKind.TupleExpression,
             SyntaxKind.ConditionalExpression,
             SyntaxKind.MultiLineRawStringLiteralToken,
-            SyntaxKind.InterpolatedVerbatimStringStartToken,
+            SyntaxKind.InterpolatedStringExpression,
 
             SyntaxKind.EqualsValueClause,
             SyntaxKind.AddAssignmentExpression,

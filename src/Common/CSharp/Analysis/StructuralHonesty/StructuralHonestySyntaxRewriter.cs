@@ -134,6 +134,13 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             }
         }
 
+        if (node.Kind() is SyntaxKind.InterpolatedStringExpression)
+        {
+            // No further processing for interpolated strings.
+            // If there is something inside it that should be formatted, then it will be picked by the trigger inside
+            return node;
+        }
+
         return base.Visit(node);
     }
 
@@ -261,7 +268,61 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         }
 #pragma warning restore RCS0055
 
+        if (token.Kind()
+            is SyntaxKind.MultiLineRawStringLiteralToken
+            or SyntaxKind.Utf8MultiLineRawStringLiteralToken
+            or SyntaxKind.InterpolatedMultiLineRawStringStartToken
+        )
+        {
+            SyntaxToken? newToken = ReformatRawString(token, parentIndentation);
+
+            if (newToken is not null)
+            {
+                token = newToken.Value;
+
+                ChangesApplied = true;
+                // Immediate stop if at least one change was applied
+                if (DoAnalysisOnly)
+                {
+                    return token;
+                }
+            }
+        }
+
         return base.VisitToken(token);
+    }
+
+    private SyntaxToken? ReformatRawString(SyntaxToken token, string expectedIndentation)
+    {
+        string[] splitContent = token.ToFullString().Split(SplitChars, StringSplitOptions.RemoveEmptyEntries);
+
+        if (splitContent.Length > 1)
+        {
+            // The trivia on index 0 is already corrected above. Whatever is there is not relevant
+            int minimumCommentIndentation = GetMinimumCommentIndentation(splitContent, startIndex: 1);
+
+            if (minimumCommentIndentation != expectedIndentation.Length)
+            {
+                int splitContentLastIndex = splitContent.Length - 1;
+                for (int i = 1; i <= splitContentLastIndex; i++)
+                {
+                    string line = splitContent[i];
+                    if (line.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    int endSliceLength = line.Length - minimumCommentIndentation;
+                    ReadOnlySpan<char> restOfTheLine =
+                        line.AsSpan().Slice(line.Length - endSliceLength, endSliceLength);
+                    splitContent[i] = expectedIndentation + restOfTheLine.ToString();
+                }
+
+                return SyntaxFactory.ParseToken(string.Join(_newLine.ToString(), splitContent));
+            }
+        }
+
+        return null;
     }
 
     public override SyntaxNode? VisitEqualsValueClause(EqualsValueClauseSyntax node)
