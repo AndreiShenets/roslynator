@@ -84,6 +84,16 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                     or SyntaxKind.ArrayInitializerExpression
                     or SyntaxKind.CollectionInitializerExpression
                     or SyntaxKind.WithInitializerExpression
+                    // Linq expression query clauses
+                    or SyntaxKind.QueryBody
+                    or SyntaxKind.FromClause
+                    or SyntaxKind.JoinClause
+                    or SyntaxKind.JoinIntoClause
+                    or SyntaxKind.LetClause
+                    or SyntaxKind.WhereClause
+                    or SyntaxKind.OrderByClause
+                    or SyntaxKind.SelectClause
+                    or SyntaxKind.GroupClause
                 )
             )
             {
@@ -310,6 +320,35 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         }
 
         return base.VisitAssignmentExpression(node);
+    }
+
+    public override SyntaxNode? VisitSelectClause(SelectClauseSyntax node)
+    {
+        bool tokensOnDifferentLines = !CheckOnTheSameLine(node.SyntaxTree, node.SelectKeyword.Span, node.Expression.Span);
+
+        // Either the equals token and value are on the different lines
+        if (tokensOnDifferentLines
+            // Or they are on the same line, but the value is single-lined
+            || node.Expression.IsSingleLine(cancellationToken: _cancellationToken)
+        )
+        {
+            return base.VisitSelectClause(node);
+        }
+
+        SyntaxToken newOperatorToken =
+            node.SelectKeyword.WithTrailingTrivia(
+                node.SelectKeyword.TrailingTrivia.AppendNewLine(_newLine)
+            );
+        node = node.WithSelectKeyword(newOperatorToken);
+
+        ChangesApplied = true;
+        // Immediate stop if at least one change was applied
+        if (DoAnalysisOnly)
+        {
+            return node;
+        }
+
+        return base.VisitSelectClause(node);
     }
 
     public override SyntaxNode? VisitArgument(ArgumentSyntax node)

@@ -3056,97 +3056,43 @@ public class RCS1271FixStructuralHonestyTests :
         );
     }
 
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_new_list()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             using System.Collections.Generic;
-//
-//             list = [|[
-//                 1, 2, 3, 4, 5
-//             ]|];
-//             list =
-//             [|[
-//                 1, 2, 3, 4, 5
-//             ]|];
-//             list = [ 1, 2, 3, 4, 5 ];
-//             list =
-//                 [ 1, 2, 3, 4, 5 ];
-//             """,
-//             """
-//             using System.Collections.Generic;
-//
-//             List<int> list =
-//                 new List<int>()
-//                 {
-//                     1, 2, 3, 4, 5
-//                 };
-//             list =
-//                 new ()
-//                 {
-//                     1, 2, 3, 4, 5
-//                 };
-//             list =
-//                 new()
-//                 {
-//                     1, 2, 3, 4, 5
-//                 };
-//             list = new () { 1, 2, 3, 4, 5 };
-//             list =
-//                 [
-//                     1, 2, 3, 4, 5
-//                 ];
-//             list =
-//                 [
-//                     1, 2, 3, 4, 5
-//                 ];
-//             list = [ 1, 2, 3, 4, 5 ];
-//             list =
-//                 [ 1, 2, 3, 4, 5 ];
-//             """,
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_linq_expression()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             using System.Collections.Generic;
-//             using System.Linq;
-//
-//             List<(string Name, string Value, bool IsValid)> collection = [];
-//
-//             var query = [|from item in collection
-//                 where item.IsValid
-//                 select [|new
-//                 {
-//                     Name = item.Name,
-//                     Value = item.Value
-//                 }|]|];
-//             """,
-//             """
-//             using System.Collections.Generic;
-//             using System.Linq;
-//
-//             List<(string Name, string Value, bool IsValid)> collection = [];
-//
-//             var query =
-//                 from item in collection
-//                 where item.IsValid
-//                 select
-//                     new
-//                     {
-//                         Name = item.Name,
-//                         Value = item.Value
-//                     };
-//             """,
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Linq_expression()
+    {
+         await VerifyDiagnosticAndFixAsync(
+             """
+             using System.Collections.Generic;
+             using System.Linq;
+
+             List<(string Name, string Value, bool IsValid)> collection = [];
+
+             var query [|= [|from item in collection
+                 where item.IsValid
+                 select new
+                 {
+                     Name = item.Name,
+                     Value = item.Value
+                 }|]|];
+             """,
+             """
+             using System.Collections.Generic;
+             using System.Linq;
+
+             List<(string Name, string Value, bool IsValid)> collection = [];
+
+             var query =
+                 from item in collection
+                 where item.IsValid
+                 select
+                     new
+                     {
+                         Name = item.Name,
+                         Value = item.Value
+                     };
+             """,
+             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+         );
+     }
 //
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
 //     public async Task Fixes_Structural_Honesty_for_aligned_linq_expression()
