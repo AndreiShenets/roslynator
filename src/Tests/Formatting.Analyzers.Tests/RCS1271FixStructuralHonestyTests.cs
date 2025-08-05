@@ -2307,6 +2307,77 @@ public class RCS1271FixStructuralHonestyTests :
     }
 
     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Anonymous_object_instantiation_as_method_param()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            [|ProcessPerson(new
+            {
+                Name = "John",
+                Age = 30
+            })|];
+    
+            static void ProcessPerson(object person)
+            {
+                // Process the person object
+            }
+            """,
+            """
+            ProcessPerson(
+                new
+                {
+                    Name = "John",
+                    Age = 30
+                }
+            );
+    
+            static void ProcessPerson(object person)
+            {
+                // Process the person object
+            }
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Anonymous_object_instantiation_as_named_method_param()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            [|ProcessPerson(10,
+                person:
+            [|new
+            {
+                Name = "John",
+                Age = 30
+            }|])|];
+
+            static void ProcessPerson(int i, object person)
+            {
+                // Process the person object
+            }
+            """,
+            """
+            ProcessPerson(10,
+                person:
+                    new
+                    {
+                        Name = "John",
+                        Age = 30
+                    }
+            );
+
+            static void ProcessPerson(int i, object person)
+            {
+                // Process the person object
+            }
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
     public async Task SwitchExpression()
     {
         await VerifyDiagnosticAndFixAsync(
@@ -2446,41 +2517,384 @@ public class RCS1271FixStructuralHonestyTests :
         );
     }
 
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Array_creation_expression_explicit_type()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            var list [|= new int[]
+            {
+                1, 2, 3, 4, 5
+            }|];
+            """,
+            """
+            var list =
+                new int[]
+                {
+                    1, 2, 3, 4, 5
+                };
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
 
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Array_creation_expression_explicit_type_one_line()
+    {
+        await VerifyNoDiagnosticAsync(
+            "var list = new int[] { 1, 2, 3, 4, 5 };",
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
 
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_new_array()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             var list = [|new[]
-//             {
-//                 1, 2, 3, 4, 5
-//             }|];
-//             var jaggedArray = [|new int[][]
-//             {
-//                 new int[] { 1, 2 },
-//                 new int[] { 3, 4, 5 },
-//                 new int[] { 6 }
-//             }|];
-//             """,
-//             """
-//             var list =
-//                 new[]
-//                 {
-//                     1, 2, 3, 4, 5
-//                 };
-//             var jaggedArray =
-//                 new int[][]
-//                 {
-//                     new int[] { 1, 2 },
-//                     new int[] { 3, 4, 5 },
-//                     new int[] { 6 }
-//                 };
-//             """,
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Array_creation_expression_implicit_type()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            var list [|= new[]
+            {
+                1, 2, 3, 4, 5
+            }|];
+            """,
+            """
+            var list =
+                new[]
+                {
+                    1, 2, 3, 4, 5
+                };
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Array_creation_expression_implicit_type_single_line()
+    {
+        await VerifyNoDiagnosticAsync(
+            "var list = new[] { 1, 2, 3, 4, 5 };",
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Array_creation_expression_for_jagged_array()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            var jaggedArray [|= new int[][]
+            {
+                new int[] { 1, 2 },
+                new int[] { 3, 4, 5 },
+                new int[] { 6 }
+            }|];
+            """,
+            """
+            var jaggedArray =
+                new int[][]
+                {
+                    new int[] { 1, 2 },
+                    new int[] { 3, 4, 5 },
+                    new int[] { 6 }
+                };
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Array_creation_expression_for_jagged_array_single_line()
+    {
+        await VerifyNoDiagnosticAsync(
+            "var jaggedArray = new int[][] { new int[] { 1, 2 }, new [] { 3, 4, 5 } };",
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Array_instantiation_as_named_method_param()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            [|ProcessPerson(
+                10,
+                ids: [|new []
+                {
+                    1, 2, 3, 4, 5
+                }|]
+            )|];
+            ProcessPerson(
+                10,
+                new []
+                {
+                    1, 2, 3, 4, 5
+                }
+            );
+            ProcessPerson(
+                10,
+                ids:
+                    new [] { 1, 2, 3, 4, 5 }
+            );
+            ProcessPerson(
+                10,
+                ids: new [] { 1, 2, 3, 4, 5 }
+            );
+            
+            static void ProcessPerson(int i, int[] ids)
+            {
+                // Process the person object
+            }
+            """,
+            """
+            ProcessPerson(
+                10,
+                ids:
+                    new []
+                    {
+                        1, 2, 3, 4, 5
+                    }
+            );
+            ProcessPerson(
+                10,
+                new []
+                {
+                    1, 2, 3, 4, 5
+                }
+            );
+            ProcessPerson(
+                10,
+                ids:
+                    new [] { 1, 2, 3, 4, 5 }
+            );
+            ProcessPerson(
+                10,
+                ids: new [] { 1, 2, 3, 4, 5 }
+            );
+
+            static void ProcessPerson(int i, int[] ids)
+            {
+                // Process the person object
+            }
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task List_creation_expression_explicit_type()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System.Collections.Generic;
+
+            var list [|= new List<int>()
+            {
+                1, 2, 3, 4, 5
+            }|];
+            """,
+            """
+            using System.Collections.Generic;
+            
+            var list =
+                new List<int>()
+                {
+                    1, 2, 3, 4, 5
+                };
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task List_creation_expression_explicit_type_one_line()
+    {
+        await VerifyNoDiagnosticAsync(
+            """
+            using System.Collections.Generic;
+            
+            var list = new List<int>() { 1, 2, 3, 4, 5 };
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task List_creation_expression_implicit_type()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System.Collections.Generic;
+            
+            List<int> list [|= new()
+            {
+                1, 2, 3, 4, 5
+            }|];
+            """,
+            """
+            using System.Collections.Generic;
+            
+            List<int> list =
+                new()
+                {
+                    1, 2, 3, 4, 5
+                };
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task List_creation_expression_implicit_type_single_line()
+    {
+        await VerifyNoDiagnosticAsync(
+            """
+            using System.Collections.Generic;
+            
+            List<int> list = new() { 1, 2, 3, 4, 5 };
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task List_creation_expression_for_list_of_lists()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System.Collections.Generic;
+            
+            List<List<int>> list [|= new ()
+            {
+                new () { 1, 2 },
+                new () { 3, 4, 5 },
+                new() { 6 }
+            }|];
+            """,
+            """
+            using System.Collections.Generic;
+            
+            List<List<int>> list =
+                new ()
+                {
+                    new () { 1, 2 },
+                    new () { 3, 4, 5 },
+                    new() { 6 }
+                };
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task List_creation_expression_for_jagged_array_single_line()
+    {
+        await VerifyNoDiagnosticAsync(
+            """
+            using System.Collections.Generic;
+            
+            List<List<int>> list = new() { new () { 1, 2 }, new() { 3, 4, 5 } };
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task List_instantiation_as_named_method_param()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System.Collections.Generic;
+            
+            [|ProcessPerson(
+                10,
+                ids: [|new()
+                {
+                    1, 2, 3, 4, 5
+                }|]
+            )|];
+            ProcessPerson(
+                10,
+                new()
+                {
+                    1, 2, 3, 4, 5
+                }
+            );
+            ProcessPerson(
+                10,
+                ids:
+                    new() { 1, 2, 3, 4, 5 }
+            );
+            ProcessPerson(
+                10,
+                ids: new() { 1, 2, 3, 4, 5 }
+            );
+            
+            static void ProcessPerson(int i, List<int> ids)
+            {
+                // Process the person object
+            }
+            """,
+            """
+            using System.Collections.Generic;
+            
+            ProcessPerson(
+                10,
+                ids:
+                    new()
+                    {
+                        1, 2, 3, 4, 5
+                    }
+            );
+            ProcessPerson(
+                10,
+                new()
+                {
+                    1, 2, 3, 4, 5
+                }
+            );
+            ProcessPerson(
+                10,
+                ids:
+                    new() { 1, 2, 3, 4, 5 }
+            );
+            ProcessPerson(
+                10,
+                ids: new() { 1, 2, 3, 4, 5 }
+            );
+
+            static void ProcessPerson(int i, List<int> ids)
+            {
+                // Process the person object
+            }
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+        );
+    }
+
 //
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
 //     public async Task Fixes_Structural_Honesty_for_new_list()
@@ -2623,16 +3037,7 @@ public class RCS1271FixStructuralHonestyTests :
 //             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
 //         );
 //     }
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task No_diagnostic_for_single_lined_value_tuple()
-//     {
-//         await VerifyNoDiagnosticAsync(
-//             """
-//             var person = (Name: "John", Age: 30);
-//             """,
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
+
 //
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
 //     public async Task Fixes_Structural_Honesty_for_ternary_expression()
@@ -2713,41 +3118,7 @@ public class RCS1271FixStructuralHonestyTests :
 //             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
 //         );
 //     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_anonymous_object_passed_into_method()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             [|ProcessPerson([|new
-//             {
-//                 Name = "John",
-//                 Age = 30
-//             }|])|];
-//
-//             static void ProcessPerson(object person)
-//             {
-//                 // Process the person object
-//             }
-//             """,
-//             """
-//             ProcessPerson(
-//                 new
-//                 {
-//                     Name = "John",
-//                     Age = 30
-//                 }
-//             );
-//
-//             static void ProcessPerson(object person)
-//             {
-//                 // Process the person object
-//             }
-//             """,
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
+
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
 //     public async Task Fixes_Structural_Honesty_inside_interpolated_string()
 //     {
@@ -3327,17 +3698,19 @@ public class RCS1271FixStructuralHonestyTests :
 
     // Parameter list
     // Parameter list with /* parameter comment */
-    // Top level invoke expression (not awaitable)
     // Assignment syntax tests
     // BooleanExpression tests
     // Something after lambda arrow tests
     // Return expression the same way as EqualsExpression
     // AwaitExpression_Method_with_InvocationExpression_on_new_line for chaining
+    // InvocationExpression inside InvocationExpression
     // directives in trivia
     // documentation trivia
-    // tuples with named fields
-    // relaxed option?
     // Method with passed tuple
     // Multiline lambda parameters
     // Attribute and Attribute arguments
+    // ? Relaxed option
+    // Constructor initializers  Constr() : base( something
+    //                                      )
+    // Array as parammeter
 }

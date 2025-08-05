@@ -81,6 +81,8 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                 is not (
                     SyntaxKind.Block
                     or SyntaxKind.ObjectInitializerExpression
+                    or SyntaxKind.ArrayInitializerExpression
+                    or SyntaxKind.CollectionInitializerExpression
                     or SyntaxKind.WithInitializerExpression
                 )
             )
@@ -230,11 +232,9 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                     )
                 )
                 && (
-                    token.Kind() is SyntaxKind.OpenParenToken or SyntaxKind.OpenBracketToken or SyntaxKind.OpenBraceToken
+                    token.Kind() is SyntaxKind.OpenParenToken or SyntaxKind.OpenBraceToken
                     || nextToken.Kind()
-                        is SyntaxKind.OpenBracketToken
-                        or SyntaxKind.OpenBraceToken
-                        or SyntaxKind.CloseBracketToken
+                        is SyntaxKind.OpenBraceToken
                         or SyntaxKind.CloseBraceToken
                 )
             )
