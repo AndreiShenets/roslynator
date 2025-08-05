@@ -2808,7 +2808,7 @@ public class RCS1271FixStructuralHonestyTests :
     }
 
     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task List_creation_expression_for_jagged_array_single_line()
+    public async Task List_creation_expression_for_list_of_lists_single_line()
     {
         await VerifyNoDiagnosticAsync(
             """
@@ -2895,6 +2895,167 @@ public class RCS1271FixStructuralHonestyTests :
         );
     }
 
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Collection_expression()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System.Collections.Generic;
+
+            List<int> list [|= [
+                1, 2, 3, 4, 5
+            ]|];
+            [|list = [
+                1,
+                2,
+                3
+            ]|];
+            [|list =
+            [|[
+                1,
+                2,
+                3
+            ]|]|];
+            """,
+            """
+            using System.Collections.Generic;
+            
+            List<int> list =
+                [
+                    1, 2, 3, 4, 5
+                ];
+            list =
+                [
+                    1,
+                    2,
+                    3
+                ];
+            list =
+                [
+                    1,
+                    2,
+                    3
+                ];
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Collection_expression_single_line()
+    {
+        await VerifyNoDiagnosticAsync(
+            """
+            using System.Collections.Generic;
+            
+            List<int> list = [ 1, 2, 3, 4, 5 ];
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Collection_expression_of_collection_expression()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System.Collections.Generic;
+            
+            List<List<int>> list [|= [
+                [ 1, 2 ],
+                [ 3, 4, 5 ],
+                [ 6 ]
+            ]|];
+            """,
+            """
+            using System.Collections.Generic;
+            
+            List<List<int>> list =
+                [
+                    [ 1, 2 ],
+                    [ 3, 4, 5 ],
+                    [ 6 ]
+                ];
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Collection_expression_as_named_method_param()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System.Collections.Generic;
+            
+            [|ProcessPerson(
+                10,
+                ids: [|[
+                    1, 2, 3, 4, 5
+                ]|]
+            )|];
+            ProcessPerson(
+                10,
+                [
+                    1, 2, 3, 4, 5
+                ]
+            );
+            ProcessPerson(
+                10,
+                ids:
+                    [ 1, 2, 3, 4, 5 ]
+            );
+            ProcessPerson(
+                10,
+                ids: [ 1, 2, 3, 4, 5 ]
+            );
+            
+            static void ProcessPerson(int i, List<int> ids)
+            {
+                // Process the person object
+            }
+            """,
+            """
+            using System.Collections.Generic;
+            
+            ProcessPerson(
+                10,
+                ids:
+                    [
+                        1, 2, 3, 4, 5
+                    ]
+            );
+            ProcessPerson(
+                10,
+                [
+                    1, 2, 3, 4, 5
+                ]
+            );
+            ProcessPerson(
+                10,
+                ids:
+                    [ 1, 2, 3, 4, 5 ]
+            );
+            ProcessPerson(
+                10,
+                ids: [ 1, 2, 3, 4, 5 ]
+            );
+
+            static void ProcessPerson(int i, List<int> ids)
+            {
+                // Process the person object
+            }
+            """,
+            options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
+        );
+    }
+
 //
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
 //     public async Task Fixes_Structural_Honesty_for_new_list()
@@ -2903,19 +3064,6 @@ public class RCS1271FixStructuralHonestyTests :
 //             """
 //             using System.Collections.Generic;
 //
-//             List<int> list = [|new List<int>()
-//             {
-//                 1, 2, 3, 4, 5
-//             }|];
-//             list = [|new ()
-//             {
-//                 1, 2, 3, 4, 5
-//             }|];
-//             list = [|new()
-//             {
-//                 1, 2, 3, 4, 5
-//             }|];
-//             list = new () { 1, 2, 3, 4, 5 };
 //             list = [|[
 //                 1, 2, 3, 4, 5
 //             ]|];
