@@ -2,6 +2,7 @@
 
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Roslynator.Formatting.CodeFixes.CSharp;
 using Roslynator.Testing.CSharp;
 using Xunit;
@@ -3095,7 +3096,7 @@ public class RCS1271FixStructuralHonestyTests :
      }
 
     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task Interpolated_string_single_line_interpolation()
+    public async Task Interpolated_Verbatim_string_single_line_interpolation()
     {
         await VerifyDiagnosticAndFixAsync(
             """
@@ -3118,7 +3119,7 @@ public class RCS1271FixStructuralHonestyTests :
     }
 
     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task Interpolated_string_multiline_interpolation()
+    public async Task Interpolated_Verbatim_string_multiline_interpolation()
     {
         await VerifyDiagnosticAndFixAsync(
             """
@@ -3174,6 +3175,20 @@ public class RCS1271FixStructuralHonestyTests :
     }
 
     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Raw_string_with_single_line_interpolation()
+    {
+        await VerifyNoDiagnosticAsync(
+            """"
+            int x = 10;
+            string s = $"""{x}abc{x}cde{x}fgh{x}""";
+            """",
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
     public async Task Raw_string_with_interpolation()
     {
         await VerifyDiagnosticAndFixAsync(
@@ -3192,6 +3207,35 @@ public class RCS1271FixStructuralHonestyTests :
                 {x}abc
                     {x}cde{x}
                 fgh{x}
+                """;
+            """",
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Raw_string_with_interpolation_string_at_the_beginning_of_line()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """"
+            int x = 10;
+            string s [|= $"""
+            {x}abc  
+                {x}cde{x}
+            fgh{x}
+            aaa bbb  
+            """|];
+            """",
+            """"
+            int x = 10;
+            string s =
+                $"""
+                {x}abc  
+                    {x}cde{x}
+                fgh{x}
+                aaa bbb  
                 """;
             """",
             options: Options.WithCompilationOptions(
@@ -3222,41 +3266,43 @@ public class RCS1271FixStructuralHonestyTests :
             )
         );
     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_raw_string_if_parameter()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """"
-//             [|C.Check([|"""
-//                 abc
-//                 cde
-//                 """|])|];
-//             """",
-//             """"
-//             C.Check(
-//                 """
-//                 abc
-//                 cde
-//                 """
-//             );
-//             """",
-//             additionalFiles:
-//                 new (string source, string expectedSource)[]
-//                 {
-//                     (
-//                         source:
-//                         """
-//                         public static class C {
-//                             public static bool Check(string s) => true;
-//                         }
-//                         """,
-//                         expectedSource: null
-//                     )
-//                 },
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Raw_string_as_method_parameter()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """"
+            [|C.Check("""
+                abc
+                cde
+                """)|];
+            """",
+            """"
+            C.Check(
+                """
+                abc
+                cde
+                """
+            );
+            """",
+            additionalFiles:
+                new (string source, string expectedSource)[]
+                {
+                    (
+                        source:
+                        """
+                        public static class C {
+                            public static bool Check(string s) => true;
+                        }
+                        """,
+                        expectedSource: null
+                    )
+                },
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
 //
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
 //     public async Task Fixes_Structural_Honesty_for_raw_string_if_named_parameter()

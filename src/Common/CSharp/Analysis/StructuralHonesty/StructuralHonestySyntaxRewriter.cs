@@ -134,13 +134,6 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             }
         }
 
-        if (node.Kind() is SyntaxKind.InterpolatedStringExpression)
-        {
-            // No further processing for interpolated strings.
-            // If there is something inside it that should be formatted, then it will be picked by the trigger inside
-            return node;
-        }
-
         return base.Visit(node);
     }
 
@@ -271,14 +264,13 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         if (token.Kind()
             is SyntaxKind.MultiLineRawStringLiteralToken
             or SyntaxKind.Utf8MultiLineRawStringLiteralToken
-            or SyntaxKind.InterpolatedMultiLineRawStringStartToken
         )
         {
-            SyntaxToken? newToken = ReformatRawString(token, parentIndentation);
+            string? result = ReformatMultilineString(token.ToFullString(), parentIndentation);
 
-            if (newToken is not null)
+            if (result is not null)
             {
-                token = newToken.Value;
+                token = SyntaxFactory.ParseToken(result);
 
                 ChangesApplied = true;
                 // Immediate stop if at least one change was applied
@@ -290,39 +282,6 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         }
 
         return base.VisitToken(token);
-    }
-
-    private SyntaxToken? ReformatRawString(SyntaxToken token, string expectedIndentation)
-    {
-        string[] splitContent = token.ToFullString().Split(SplitChars, StringSplitOptions.RemoveEmptyEntries);
-
-        if (splitContent.Length > 1)
-        {
-            // The trivia on index 0 is already corrected above. Whatever is there is not relevant
-            int minimumCommentIndentation = GetMinimumCommentIndentation(splitContent, startIndex: 1);
-
-            if (minimumCommentIndentation != expectedIndentation.Length)
-            {
-                int splitContentLastIndex = splitContent.Length - 1;
-                for (int i = 1; i <= splitContentLastIndex; i++)
-                {
-                    string line = splitContent[i];
-                    if (line.Length == 0)
-                    {
-                        continue;
-                    }
-
-                    int endSliceLength = line.Length - minimumCommentIndentation;
-                    ReadOnlySpan<char> restOfTheLine =
-                        line.AsSpan().Slice(line.Length - endSliceLength, endSliceLength);
-                    splitContent[i] = expectedIndentation + restOfTheLine.ToString();
-                }
-
-                return SyntaxFactory.ParseToken(string.Join(_newLine.ToString(), splitContent));
-            }
-        }
-
-        return null;
     }
 
     public override SyntaxNode? VisitEqualsValueClause(EqualsValueClauseSyntax node)
@@ -557,6 +516,32 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         return base.VisitTupleExpression(node);
     }
 
+    public override SyntaxNode VisitInterpolatedStringExpression(InterpolatedStringExpressionSyntax node)
+    {
+        // No further processing for interpolated strings.
+        // If there is something inside it that should be formatted, then it will be picked by the trigger inside.
+        // That's why the method always returns the incoming node as is without calling the base method.
+
+        // The method still needs to reformat an incoming Interpolated Multi Line Raw Strings
+
+        if (!node.GetFirstToken().IsKind(SyntaxKind.InterpolatedMultiLineRawStringStartToken))
+        {
+            return node;
+        }
+
+        string expectedIndentation = GetParentIndentation(node) + _singleIndentation;
+        string? result = ReformatMultilineString(node.ToFullString(), expectedIndentation);
+
+        if (result is not null
+            && SyntaxFactory.ParseExpression(result) is InterpolatedStringExpressionSyntax interpolatedStringText
+        )
+        {
+            node = interpolatedStringText;
+        }
+
+        return node;
+    }
+
     private SyntaxNodeOrToken? ReformatLeadingTrivia(
         SyntaxNodeOrToken node,
         string expectedIndentation
@@ -695,41 +680,66 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             {
                 // For multi-line comment trivia we need to check that the indentation of the content is correct
                 // The content of the multi-line comment trivia is the text between the start and end of the trivia
-                string[] splitContent =
-                    trivia.ToFullString()
-                        .Split(SplitChars, StringSplitOptions.RemoveEmptyEntries);
-
-                if (splitContent.Length > 1)
+                string? result = ReformatMultilineString(trivia.ToFullString(), expectedIndentation);
+                if (result is not null)
                 {
-                    // The trivia on index 0 is already corrected above. Whatever is there is not relevant
-                    int minimumCommentIndentation = GetMinimumCommentIndentation(splitContent, startIndex: 1);
-
-                    if (minimumCommentIndentation != expectedIndentation.Length)
-                    {
-                        int splitContentLastIndex = splitContent.Length - 1;
-                        for (int i = 1; i <= splitContentLastIndex; i++)
-                        {
-                            string line = splitContent[i];
-                            if (line.Length == 0)
-                            {
-                                continue;
-                            }
-
-                            int endSliceLength = line.Length - minimumCommentIndentation;
-                            ReadOnlySpan<char> restOfTheLine =
-                                line.AsSpan().Slice(line.Length - endSliceLength, endSliceLength);
-                            splitContent[i] = expectedIndentation + restOfTheLine.ToString();
-                        }
-
-                        changesExist = true;
-                        yield return SyntaxFactory.Comment(string.Join(_newLine.ToString(), splitContent));
-                        yield break;
-                    }
+                    changesExist = true;
+                    yield return SyntaxFactory.Comment(result);
+                    yield break;
                 }
             }
 
             yield return trivia;
         }
+    }
+
+    /// <summary>
+    /// For multi-line comment trivia, or for raw string or etc., we need to check that the indentation of the content is correct
+    /// The content is expected to be the text between the start and end tokens
+    /// Returns null if no changes exist.
+    /// </summary>
+    private string? ReformatMultilineString(string strContent, string expectedIndentation)
+    {
+        string[] splitContent = strContent.Split(SplitChars, StringSplitOptions.RemoveEmptyEntries);
+
+        if (splitContent.Length > 1)
+        {
+            bool changesExist = false;
+
+            // The trivia on index 0 or the raw string start token should be already corrected.
+            // Only the following lines should be checked
+            int minimumCommentIndentation = GetMinimumCommentIndentation(splitContent, startIndex: 1);
+
+            if (minimumCommentIndentation != expectedIndentation.Length)
+            {
+                int splitContentLastIndex = splitContent.Length - 1;
+                for (int i = 1; i <= splitContentLastIndex; i++)
+                {
+                    string line = splitContent[i];
+                    if (line.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    int endSliceLength = line.Length - minimumCommentIndentation;
+                    int currentIndentationLength = line.Length - endSliceLength;
+                    if (currentIndentationLength != expectedIndentation.Length)
+                    {
+                        changesExist = true;
+                        ReadOnlySpan<char> restOfTheLine =
+                            line.AsSpan().Slice(line.Length - endSliceLength, endSliceLength);
+                        splitContent[i] = expectedIndentation + restOfTheLine.ToString();
+                    }
+                }
+
+                if (changesExist)
+                {
+                    return string.Join(_newLine.ToString(), splitContent);
+                }
+            }
+        }
+
+        return null;
     }
 
     private static int GetMinimumCommentIndentation(string[] splitContent, int startIndex)
@@ -762,11 +772,8 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         int currentIndentationLength = 0;
         while (
             currentIndentationLength < line.Length
-            && (
-                // Let's count both cases as 1
-                char.IsWhiteSpace(line[currentIndentationLength])
-                || line[currentIndentationLength] == '\t'
-            )
+            // Let's count both cases as 1
+            && line[currentIndentationLength] is ' ' or '\t'
         )
         {
             currentIndentationLength++;
@@ -884,7 +891,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         {
             char c = sourceText[charIndex];
 
-            if (!char.IsWhiteSpace(c) && c != '\t')
+            if (c is not (' ' or '\t'))
             {
                 return false;
             }
