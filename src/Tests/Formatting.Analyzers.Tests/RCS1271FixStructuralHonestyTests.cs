@@ -3303,128 +3303,134 @@ public class RCS1271FixStructuralHonestyTests :
             )
         );
     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_raw_string_if_named_parameter()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """"
-//             [|C.Check(
-//                 s: "tst",
-//                 options: [|"""
-//                 abc
-//                 cde
-//                 """|])|];
-//             """",
-//             """"
-//             C.Check(
-//                 s: "tst",
-//                 options:
-//                     """
-//                     abc
-//                     cde
-//                     """
-//             );
-//             """",
-//             additionalFiles:
-//                 new (string source, string expectedSource)[]
-//                 {
-//                     (
-//                         source:
-//                         """
-//                         public static class C {
-//                             public static bool Check(string s, string options) => true;
-//                         }
-//                         """,
-//                         expectedSource: null
-//                     )
-//                 },
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_raw_strings_and_named_parameter()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """"
-//             using System.Threading.Tasks;
-//
-//             Tst c = new();
-//             await c.Test();
-//
-//             public class Tst {
-//                 public async Task Test()
-//                 {
-//                     [|await C.Check([|"""
-//             class C
-//             {
-//                 void M()
-//                 {
-//                     var x = [|new[]|] { "" };
-//                 }
-//             }
-//             """|], [|"""
-//             class C
-//             {
-//                 void M()
-//                 {
-//                     var x = new string[] { "" };
-//                 }
-//             }
-//             """|], options: "tst")|];
-//                 }
-//             }
-//             """",
-//             """"
-//             using System.Threading.Tasks;
-//
-//             public class Tst {
-//                 public async Task Test()
-//                 {
-//                     await C.Check(
-//                         """
-//                         class C
-//                         {
-//                             void M()
-//                             {
-//                                 var x = [|new[]|] { "" };
-//                             }
-//                         }
-//                         """,
-//                         """
-//                         class C
-//                         {
-//                             void M()
-//                             {
-//                                 var x = new string[] { "" };
-//                             }
-//                         }
-//                         """, options: "tst"
-//                     );
-//                 }
-//             }
-//             );
-//             """",
-//             additionalFiles:
-//                 new (string source, string expectedSource)[]
-//                 {
-//                     (
-//                         source:
-//                         """
-//                         using System.Threading.Tasks;
-//
-//                         public static class C {
-//                             public static Task<bool> Check(string s, string t, string options) => Task.FromResult(true);
-//                         }
-//                         """,
-//                         expectedSource: null
-//                     )
-//                 },
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
-//
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Raw_string_as_named_method_parameter()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """"
+            [|C.Check(
+                s: "tst",
+                options: """
+                abc
+                cde
+                """)|];
+            """",
+            """"
+            C.Check(
+                s: "tst",
+                options:
+                    """
+                    abc
+                    cde
+                    """
+            );
+            """",
+            additionalFiles:
+                new (string source, string expectedSource)[]
+                {
+                    (
+                        source:
+                        """
+                        public static class C {
+                            public static bool Check(string s, string options) => true;
+                        }
+                        """,
+                        expectedSource: null
+                    )
+                },
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Raw_string_with_complex_structure()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """"
+            using System.Threading.Tasks;
+
+            Tst c = new();
+            await c.Test();
+
+            public class Tst {
+                public async Task Test()
+                {
+                    [|await [|C.Check("""
+            class C
+            {
+                void M()
+                {
+                    var x = new[] { "" };
+                }
+            }
+            """, """
+            class C
+            {
+                void M()
+                {
+                    var x = new string[] { "" };
+                }
+            }
+            """, options: "tst")|]|];
+                }
+            }
+            """",
+            """"
+            using System.Threading.Tasks;
+            
+            Tst c = new();
+            await c.Test();
+            
+            public class Tst
+            {
+                public async Task Test()
+                {
+                    await C.Check(
+                        """
+                        class C
+                        {
+                            void M()
+                            {
+                                var x = new[] { "" };
+                            }
+                        }
+                        """,
+                        """
+                        class C
+                        {
+                            void M()
+                            {
+                                var x = new string[] { "" };
+                            }
+                        }
+                        """, options: "tst"
+                    );
+                }
+            }
+            """",
+            additionalFiles:
+                new (string source, string expectedSource)[]
+                {
+                    (
+                        source:
+                        """
+                        using System.Threading.Tasks;
+
+                        public static class C {
+                            public static Task<bool> Check(string s, string t, string options) => Task.FromResult(true);
+                        }
+                        """,
+                        expectedSource: null
+                    )
+                },
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
 
     // [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
     // public async Task Binary_expression_assignment_to_variable()

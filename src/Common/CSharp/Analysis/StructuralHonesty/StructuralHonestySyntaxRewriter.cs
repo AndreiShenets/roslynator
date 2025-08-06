@@ -246,6 +246,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                     || nextToken.Kind()
                         is SyntaxKind.OpenBraceToken
                         or SyntaxKind.CloseBraceToken
+                        or SyntaxKind.MultiLineRawStringLiteralToken
                 )
             )
             {
