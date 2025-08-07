@@ -77,9 +77,12 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         if (nothingButTriviaInFront)
         {
             SyntaxKind nodeKind = node.Kind();
+            SyntaxKind? parentNode = node.Parent?.Kind();
             if (nodeKind
                 is not (
-                    SyntaxKind.Block
+                    SyntaxKind.GlobalStatement
+                    or SyntaxKind.CompilationUnit
+                    or SyntaxKind.Block
                     or SyntaxKind.ObjectInitializerExpression
                     or SyntaxKind.ArrayInitializerExpression
                     or SyntaxKind.CollectionInitializerExpression
@@ -94,6 +97,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                     or SyntaxKind.OrderByClause
                     or SyntaxKind.SelectClause
                     or SyntaxKind.GroupClause
+                )
+                && parentNode is not (
+                    SyntaxKind.GlobalStatement
+                    or SyntaxKind.CompilationUnit
                 )
             )
             {

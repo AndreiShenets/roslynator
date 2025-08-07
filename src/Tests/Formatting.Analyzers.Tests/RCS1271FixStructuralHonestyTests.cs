@@ -1090,7 +1090,8 @@ public class RCS1271FixStructuralHonestyTests :
                     using System;
                     using System.Threading.Tasks;
 
-                    public class C {
+                    public class C
+                    {
                         public static C Instance { get; } = new C();
 
                         public Task<bool> MyMethodAsync(Func<int, int, int, Task<int>> f) => Task.FromResult(true);
@@ -3291,7 +3292,8 @@ public class RCS1271FixStructuralHonestyTests :
                     (
                         source:
                         """
-                        public static class C {
+                        public static class C
+                        {
                             public static bool Check(string s) => true;
                         }
                         """,
@@ -3332,7 +3334,8 @@ public class RCS1271FixStructuralHonestyTests :
                     (
                         source:
                         """
-                        public static class C {
+                        public static class C
+                        {
                             public static bool Check(string s, string options) => true;
                         }
                         """,
@@ -3355,7 +3358,7 @@ public class RCS1271FixStructuralHonestyTests :
             Tst c = new();
             await c.Test();
 
-            public class Tst {
+            [|public class Tst {
                 public async Task Test()
                 {
                     [|await [|C.Check("""
@@ -3376,7 +3379,7 @@ public class RCS1271FixStructuralHonestyTests :
             }
             """, options: "tst")|]|];
                 }
-            }
+            }|]
             """",
             """"
             using System.Threading.Tasks;
@@ -3419,7 +3422,8 @@ public class RCS1271FixStructuralHonestyTests :
                         """
                         using System.Threading.Tasks;
 
-                        public static class C {
+                        public static class C
+                        {
                             public static Task<bool> Check(string s, string t, string options) => Task.FromResult(true);
                         }
                         """,

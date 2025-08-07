@@ -73,6 +73,8 @@ public sealed class FixStructuralHonestyFixProvider : BaseCodeFixProvider
                         case SyntaxKind.CoalesceAssignmentExpression:
                         case SyntaxKind.SimpleAssignmentExpression:
                         case SyntaxKind.UnsignedRightShiftAssignmentExpression:
+
+                        case SyntaxKind.ClassDeclaration:
                             return true;
                         default:
                             return false;
