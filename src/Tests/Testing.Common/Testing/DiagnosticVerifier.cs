@@ -135,7 +135,7 @@ public abstract class DiagnosticVerifier<TAnalyzer, TFixProvider> : CodeVerifier
 
             VerifyCompilerDiagnostics(compilerDiagnostics, options);
 
-            ImmutableArray<Diagnostic> diagnostics = await GetAnalyzerDiagnosticsAsync(compilation, analyzer, document.Project.AnalyzerOptions, DiagnosticComparer.SpanStart, cancellationToken);
+            ImmutableArray<Diagnostic> diagnostics = await GetAnalyzerDiagnosticsAsync(compilation, analyzer, document.Project.AnalyzerOptions, DiagnosticComparer.SpanStartEnd, cancellationToken);
 
             if (diagnostics.Length > 0
                 && supportedDiagnostics.Length > 1)
@@ -275,7 +275,7 @@ public abstract class DiagnosticVerifier<TAnalyzer, TFixProvider> : CodeVerifier
 
             VerifyCompilerDiagnostics(compilerDiagnostics, options);
 
-            ImmutableArray<Diagnostic> actualDiagnostics = await GetAnalyzerDiagnosticsAsync(compilation, analyzer, document.Project.AnalyzerOptions, DiagnosticComparer.SpanStart, cancellationToken);
+            ImmutableArray<Diagnostic> actualDiagnostics = await GetAnalyzerDiagnosticsAsync(compilation, analyzer, document.Project.AnalyzerOptions, DiagnosticComparer.SpanStartEnd, cancellationToken);
 
             actualDiagnostics = actualDiagnostics
                 .Where(diagnostic => string.Equals(diagnostic.Id, Descriptor.Id))
@@ -491,7 +491,7 @@ public abstract class DiagnosticVerifier<TAnalyzer, TFixProvider> : CodeVerifier
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                ImmutableArray<Diagnostic> diagnostics = await GetAnalyzerDiagnosticsAsync(compilation, analyzer, document.Project.AnalyzerOptions, DiagnosticComparer.SpanStart, cancellationToken);
+                ImmutableArray<Diagnostic> diagnostics = await GetAnalyzerDiagnosticsAsync(compilation, analyzer, document.Project.AnalyzerOptions, DiagnosticComparer.SpanStartEnd, cancellationToken);
 
                 int length = diagnostics.Length;
 
@@ -640,7 +640,7 @@ public abstract class DiagnosticVerifier<TAnalyzer, TFixProvider> : CodeVerifier
 
             VerifyCompilerDiagnostics(compilerDiagnostics, options);
 
-            ImmutableArray<Diagnostic> diagnostics = await GetAnalyzerDiagnosticsAsync(compilation, analyzer, document.Project.AnalyzerOptions, DiagnosticComparer.SpanStart, cancellationToken);
+            ImmutableArray<Diagnostic> diagnostics = await GetAnalyzerDiagnosticsAsync(compilation, analyzer, document.Project.AnalyzerOptions, DiagnosticComparer.SpanStartEnd, cancellationToken);
 
             foreach (Diagnostic diagnostic in diagnostics)
             {
@@ -693,8 +693,8 @@ public abstract class DiagnosticVerifier<TAnalyzer, TFixProvider> : CodeVerifier
         int expectedCount = 0;
         int actualCount = 0;
 
-        using (IEnumerator<Diagnostic> expectedEnumerator = expectedDiagnostics.OrderBy(f => f, DiagnosticComparer.SpanStart).GetEnumerator())
-        using (IEnumerator<Diagnostic> actualEnumerator = actualDiagnostics.OrderBy(f => f, DiagnosticComparer.SpanStart).GetEnumerator())
+        using (IEnumerator<Diagnostic> expectedEnumerator = expectedDiagnostics.OrderBy(f => f, DiagnosticComparer.SpanStartEnd).GetEnumerator())
+        using (IEnumerator<Diagnostic> actualEnumerator = actualDiagnostics.OrderBy(f => f, DiagnosticComparer.SpanStartEnd).GetEnumerator())
         {
             if (!expectedEnumerator.MoveNext())
                 Fail("Diagnostic's location not found in a source text.");

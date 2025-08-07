@@ -75,7 +75,8 @@ public sealed class FixStructuralHonestyAnalyzer : BaseDiagnosticAnalyzer
             SyntaxKind.SimpleAssignmentExpression,
             SyntaxKind.UnsignedRightShiftAssignmentExpression,
 
-            SyntaxKind.ClassDeclaration
+            SyntaxKind.ClassDeclaration,
+            SyntaxKind.ParenthesizedExpression
         );
     }
 

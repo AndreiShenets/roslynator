@@ -11,7 +11,7 @@ internal abstract class DiagnosticComparer : IComparer<Diagnostic>, IEqualityCom
 {
     public static DiagnosticComparer Id { get; } = new DiagnosticIdComparer();
 
-    public static DiagnosticComparer SpanStart { get; } = new DiagnosticSpanStartComparer();
+    public static DiagnosticComparer SpanStartEnd { get; } = new DiagnosticSpanStartEndComparer();
 
     public static DiagnosticComparer IdThenFilePathThenSpanStart { get; } = new DiagnosticIdThenFilePathThenSpanStartComparer();
 
@@ -111,7 +111,7 @@ internal abstract class DiagnosticComparer : IComparer<Diagnostic>, IEqualityCom
         }
     }
 
-    private class DiagnosticSpanStartComparer : DiagnosticComparer
+    private class DiagnosticSpanStartEndComparer : DiagnosticComparer
     {
         public override int Compare(Diagnostic x, Diagnostic y)
         {
@@ -124,7 +124,15 @@ internal abstract class DiagnosticComparer : IComparer<Diagnostic>, IEqualityCom
             if (y is null)
                 return 1;
 
-            return x.Location.SourceSpan.Start.CompareTo(y.Location.SourceSpan.Start);
+            int startComparisonResult = x.Location.SourceSpan.Start.CompareTo(y.Location.SourceSpan.Start);
+            int comparisonResult =
+                startComparisonResult switch
+                {
+                    0 => x.Location.SourceSpan.End.CompareTo(y.Location.SourceSpan.End),
+                    _ => startComparisonResult
+                };
+
+            return comparisonResult;
         }
 
         public override bool Equals(Diagnostic x, Diagnostic y)

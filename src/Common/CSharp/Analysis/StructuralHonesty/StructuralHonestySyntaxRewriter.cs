@@ -157,12 +157,13 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         string parentIndentation = GetParentIndentation(token);
 
+        SyntaxKind tokenKind = token.Kind();
         if (nothingButTriviaInFront)
         {
             // Logic of moving close parens, bracket and braces to the next line and align them with the parent start
             string expectedIndentation = parentIndentation;
 
-            if (token.Kind() is SyntaxKind.CloseParenToken or SyntaxKind.CloseBracketToken or SyntaxKind.CloseBraceToken)
+            if (tokenKind is SyntaxKind.CloseParenToken or SyntaxKind.CloseBracketToken or SyntaxKind.CloseBraceToken)
             {
                 // Comments in front of the closing parent, bracket or brace should be additionally indented,
                 // When the closing parent, bracket or brace should be on the parent level
@@ -170,7 +171,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             }
 
             string expectedLastIndentation = parentIndentation;
-            if (token.Kind()
+            if (tokenKind
                 is not (
                     SyntaxKind.CloseParenToken
                     or SyntaxKind.CloseBracketToken
@@ -181,6 +182,11 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                     or SyntaxKind.OpenParenToken
                     // { should be placed on the parent level
                     or SyntaxKind.OpenBraceToken
+                )
+                && token.Parent is not BinaryExpressionSyntax
+                // Special case when a parenthesized expression is followed by a chained method
+                && !(token.Parent is MemberAccessExpressionSyntax memberAccessExpression
+                    && memberAccessExpression.Expression.Kind() is SyntaxKind.ParenthesizedExpression
                 )
             )
             {
@@ -249,7 +255,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                     )
                 )
                 && (
-                    token.Kind() is SyntaxKind.OpenParenToken or SyntaxKind.OpenBraceToken
+                    tokenKind
+                        is SyntaxKind.OpenParenToken
+                        or SyntaxKind.OpenBraceToken
+                        or SyntaxKind.EqualsGreaterThanToken
                     || nextToken.Kind()
                         is SyntaxKind.OpenBraceToken
                         or SyntaxKind.CloseBraceToken
@@ -269,7 +278,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         }
 #pragma warning restore RCS0055
 
-        if (token.Kind()
+        if (tokenKind
             is SyntaxKind.MultiLineRawStringLiteralToken
             or SyntaxKind.Utf8MultiLineRawStringLiteralToken
         )
@@ -348,6 +357,98 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         }
 
         return base.VisitAssignmentExpression(node);
+    }
+
+    public override SyntaxNode? VisitBinaryExpression(BinaryExpressionSyntax node)
+    {
+        bool leftAndOperatorOnSameLine = CheckOnTheSameLine(node.SyntaxTree, node.Left.Span, node.OperatorToken.Span);
+        bool operatorAndRightOnSameLine = CheckOnTheSameLine(node.SyntaxTree, node.OperatorToken.Span, node.Right.Span);
+        bool operatorAndRightOnDifferentLines = !operatorAndRightOnSameLine;
+
+        if (leftAndOperatorOnSameLine
+            && (node.Left.IsMultiLine(cancellationToken: _cancellationToken)
+                || node.Right.IsMultiLine(cancellationToken: _cancellationToken)
+            )
+        )
+        {
+            ExpressionSyntax newLeft =
+                node.Left.WithTrailingTrivia(
+                    node.OperatorToken.TrailingTrivia.AppendNewLine(_newLine)
+                );
+
+            node = node.WithLeft(newLeft);
+
+            ChangesApplied = true;
+            // Immediate stop if at least one change was applied
+            if (DoAnalysisOnly)
+            {
+                return node;
+            }
+        }
+
+        if (operatorAndRightOnDifferentLines)
+        {
+            SyntaxToken newOperator =
+                node.OperatorToken.WithTrailingTrivia(
+                    node.OperatorToken.TrailingTrivia.TrimEnd()
+                );
+
+            node = node.WithOperatorToken(newOperator);
+
+            ChangesApplied = true;
+            // Immediate stop if at least one change was applied
+            if (DoAnalysisOnly)
+            {
+                return node;
+            }
+        }
+
+        return base.VisitBinaryExpression(node);
+    }
+
+    public override SyntaxNode? VisitParenthesizedExpression(ParenthesizedExpressionSyntax node)
+    {
+        string parentIndentation = GetParentIndentation(node);
+        string increasedParentIndentation = parentIndentation + _singleIndentation;
+
+        bool openParenOnTheNewLine = false;
+
+        if (CheckNothingButTriviaInFront(node.OpenParenToken))
+        {
+            openParenOnTheNewLine = true;
+            _indentationCache[node] = increasedParentIndentation;
+        }
+
+        if (CheckOnTheSameLine(node.SyntaxTree, node.OpenParenToken.Span, node.CloseParenToken.Span))
+        {
+            return base.VisitParenthesizedExpression(node);
+        }
+
+        // Parents are on different lines, but the closing paren is not on its own line, so move it to the next line
+        if (!CheckNothingButTriviaInFront(node.CloseParenToken))
+        {
+            node =
+                node.WithExpression(
+                    node.Expression.WithTrailingTrivia(
+                        node.Expression.GetTrailingTrivia().AppendNewLine(_newLine)
+                    )
+                );
+
+            ChangesApplied = true;
+            // Immediate stop if at least one change was applied
+            if (DoAnalysisOnly)
+            {
+                return node;
+            }
+
+            // Updating indentation reference again as node has been changed
+            if (openParenOnTheNewLine)
+            {
+                _indentationCache[node] = increasedParentIndentation;
+            }
+        }
+
+        return base.VisitParenthesizedExpression(node);
     }
 
     public override SyntaxNode? VisitSelectClause(SelectClauseSyntax node)

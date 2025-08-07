@@ -75,6 +75,7 @@ public sealed class FixStructuralHonestyFixProvider : BaseCodeFixProvider
                         case SyntaxKind.UnsignedRightShiftAssignmentExpression:
 
                         case SyntaxKind.ClassDeclaration:
+                        case SyntaxKind.ParenthesizedExpression:
                             return true;
                         default:
                             return false;
