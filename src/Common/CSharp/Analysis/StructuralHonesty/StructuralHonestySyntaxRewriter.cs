@@ -14,12 +14,12 @@ namespace Roslynator.CSharp.Analysis.StructuralHonesty;
 
 public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 {
-    private static readonly char[] SplitChars = ['\r', '\n'];
-
     private readonly string _parentIndentation;
     private readonly string _singleIndentation;
     private readonly SyntaxTrivia _newLine;
     private readonly CancellationToken _cancellationToken;
+
+    private string[]? _splitParameter;
 
     private readonly Dictionary<SyntaxNode, string> _indentationCache = [];
 
@@ -708,7 +708,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
     /// </summary>
     private string? ReformatMultilineString(string strContent, string expectedIndentation)
     {
-        string[] splitContent = strContent.Split(SplitChars, StringSplitOptions.RemoveEmptyEntries);
+        string[] splitContent = strContent.Split(GetSplitParameter(), StringSplitOptions.None);
 
         if (splitContent.Length > 1)
         {
@@ -1013,6 +1013,18 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             return false;
         }
     }
+
+    private string[] GetSplitParameter()
+    {
+        if (_splitParameter is not null)
+        {
+            return _splitParameter;
+        }
+
+        _splitParameter = new[] { _newLine.ToString() };
+
+        return _splitParameter;
+    }
 }
 
 /// <summary>
@@ -1033,11 +1045,7 @@ file static class SyntaxNodeOrTokenExtensions
     /// </summary>
     public static bool IsWrapper(this SyntaxNode nodeOrToken) => nodeOrToken.Kind().IsWrapperKind();
 
-    [SuppressMessage(
-        "Style",
-        "RCS1016",
-        Justification = "It's handier to have this as it is"
-    )]
+    [SuppressMessage("Style", "RCS1016", Justification = "It's handier to have this as it is")]
     private static bool IsWrapperKind(this SyntaxKind kind)
         => kind
             is SyntaxKind.Argument

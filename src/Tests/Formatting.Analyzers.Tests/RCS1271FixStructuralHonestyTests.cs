@@ -3224,7 +3224,9 @@ public class RCS1271FixStructuralHonestyTests :
             int x = 10;
             string s [|= $"""
             {x}abc  
+            
                 {x}cde{x}
+            
             fgh{x}
             aaa bbb  
             """|];
@@ -3234,7 +3236,9 @@ public class RCS1271FixStructuralHonestyTests :
             string s =
                 $"""
                 {x}abc  
+            
                     {x}cde{x}
+            
                 fgh{x}
                 aaa bbb  
                 """;
