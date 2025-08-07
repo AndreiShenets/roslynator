@@ -3533,6 +3533,90 @@ public class RCS1271FixStructuralHonestyTests :
         );
     }
 
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Property_get_only_with_lambda_body()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            [|public class C {
+                public bool Options
+                    => [|CheckOptionsCalculatedFor(
+                        "Option1",
+                            "Option2" // broken formatting is expected, no changes should be provided
+                    )|];
+
+                public bool OptionsWithComment
+                    => /*what if comment is here? */ [|CheckOptionsCalculatedFor(
+                    "Option1", "Option2" // broken formatting is expected, no changes should be provided
+                    )|];
+
+                public static bool CheckOptionsCalculatedFor(string option1, string option2) => true;
+            }|]
+            """,
+            """
+            public class C
+            {
+                public bool Options
+                    =>
+                        CheckOptionsCalculatedFor(
+                            "Option1",
+                            "Option2" // broken formatting is expected, no changes should be provided
+                        );
+
+                public bool OptionsWithComment
+                    => /*what if comment is here? */
+                        CheckOptionsCalculatedFor(
+                            "Option1", "Option2" // broken formatting is expected, no changes should be provided
+                        );
+
+                public static bool CheckOptionsCalculatedFor(string option1, string option2) => true;
+            }
+            """
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Method_with_lambda_body()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            [|public class C {
+                public bool GetOptions() => [|CheckOptionsCalculatedFor(
+                    "Option1",
+                        "Option2" // broken formatting is expected, no changes should be provided
+                )|];
+
+                public bool GetOptionsWithComment() => /*what if comment is here? */ [|CheckOptionsCalculatedFor(
+                    "Option1",
+                        "Option2" // broken formatting is expected, no changes should be provided
+                )|];
+
+                public static bool CheckOptionsCalculatedFor(string option1, string option2) => true;
+            }|]
+            """,
+            """
+            public class C
+            {
+                public bool GetOptions() =>
+                    CheckOptionsCalculatedFor(
+                        "Option1",
+                        "Option2" // broken formatting is expected, no changes should be provided
+                    );
+
+                public bool GetOptionsWithComment() => /*what if comment is here? */
+                    CheckOptionsCalculatedFor(
+                        "Option1",
+                        "Option2" // broken formatting is expected, no changes should be provided
+                    );
+
+                public static bool CheckOptionsCalculatedFor(string option1, string option2) => true;
+            }
+            """
+        );
+    }
+
+    // Chaining in the chained chaining
+
 //
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
 //     public async Task Fixes_Structural_Honesty_for_ternary_expression()
@@ -3596,108 +3680,111 @@ public class RCS1271FixStructuralHonestyTests :
 //     }
 
     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task Property_get_only_with_lambda_body()
+    public async Task Chaining()
     {
         await VerifyDiagnosticAndFixAsync(
             """
-            [|public class C {
-                public bool Options
-                    => [|CheckOptionsCalculatedFor(
-                        "Option1",
-                            "Option2" // broken formatting is expected, no changes should be provided
-                    )|];
+            using System.Linq;
 
-                public bool OptionsWithComment
-                    => /*what if comment is here? */ [|CheckOptionsCalculatedFor(
-                        "Option1",
-                            "Option2" // broken formatting is expected, no changes should be provided
-                    )|];
-
-                public static bool CheckOptionsCalculatedFor(string option1, string option2) => true;
-            }|]
+            int x [|= Enumerable.Range(1, 10)
+                .Select(i => i)
+                .Where(i => i > 5)
+                .Select(i => i).Count()|];
             """,
             """
-            public class C
-            {
-                public bool Options
-                    =>
-                        CheckOptionsCalculatedFor(
-                            "Option1",
-                            "Option2" // broken formatting is expected, no changes should be provided
-                        );
+            using System.Linq;
 
-                public bool OptionsWithComment
-                    => /*what if comment is here? */
-                        CheckOptionsCalculatedFor(
-                            "Option1",
-                            "Option2" // broken formatting is expected, no changes should be provided
-                        );
-
-                public static bool CheckOptionsCalculatedFor(string option1, string option2) => true;
-            }
-            """
+            int x =
+                Enumerable.Range(1, 10)
+                    .Select(i => i)
+                    .Where(i => i > 5)
+                    .Select(i => i).Count();
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
         );
     }
 
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_chaining()
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Chaining_as_method_param()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System.Linq;
+
+            [|C.Check([|[|[|[|[|Enumerable.Range(1, 10)
+            .Select(i => i)|]
+            .Where([|i => {
+                return i > 5; }|])|].Where([|i => {
+            return i > 6; }|])|]
+            .Select(i => i)|].Count()|])|];
+            """,
+            """
+            using System.Linq;
+
+            C.Check(
+                Enumerable.Range(1, 10)
+                    .Select(i => i)
+                    .Where(
+                        i =>
+                        {
+                            return i > 5;
+                        }
+                    )
+                    .Where(
+                        i =>
+                        {
+                            return i > 6;
+                        }
+                    )
+                    .Select(i => i)
+                    .Count()
+            );
+            """,
+            additionalFiles:
+                new (string source, string expectedSource)[]
+                {
+                    (
+                        source:
+                        """
+                        public static class C 
+                        {
+                            public static bool Check(int i) => true;
+                        }
+                        """,
+                        expectedSource: null
+                    )
+                },
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+// class C
+// {
+//     C X => this;
+//     C this[int index] => this;
+//     IEnumerable<C> E => Enumerable<C>.Empty;
+//
+//     C M()
 //     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             using System.Linq;
+//         var x = new C();
 //
-//             int x = [|Enumerable.Range(1, 10)
-//                 .Select(i => i)
-//                 .Where(i => i > 5)
-//                 .Select(i => i).Count()|];
-//             """,
-//             """
-//             using System.Linq;
-//
-//             int x =
-//                 Enumerable.Range(1, 10)
-//                     .Select(i => i)
-//                     .Where(i => i > 5)
-//                     .Select(i => i).Count();
-//             """,
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
+//         return x.M() // Trailing
+//             // leading
+//             .M() /*
+//         asdgasd
+//         asdgasd */ .M()
+//             ?.M()
+//             !.M()
+//             .X
+//             .X[0]
+//             .M();
 //     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Fixes_Structural_Honesty_for_chaining_as_method_param()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             [|C.Check([|Enumerable.Range(1, 10)
-//                     .Select(i => i)
-//                     .Where(i => i > 5)
-//                     .Select(i => i).Count()|])|];
-//             """,
-//             """
-//             C.Check(
-//                 Enumerable.Range(1, 10)
-//                     .Select(i => i)
-//                     .Where(i => i > 5)
-//                     .Select(i => i).Count()
-//             );
-//             """,
-//             additionalFiles:
-//                 new (string source, string expectedSource)[]
-//                 {
-//                     (
-//                         source:
-//                         """
-//                         public static class C {
-//                             public static bool Check(int i) => true;
-//                         }
-//                         """,
-//                         expectedSource: null
-//                     )
-//                 },
-//             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
-//         );
-//     }
+// }
+
 //
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
 //     public async Task Fixes_Structural_Honesty_for_lambda_inside_chaining()

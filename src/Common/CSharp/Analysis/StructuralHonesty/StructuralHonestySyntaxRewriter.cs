@@ -72,7 +72,8 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         // and comment reformatting are still possible.
 
         bool nothingButTriviaInFront = CheckNothingButTriviaInFront(node);
-        string expectedIndentation = GetParentIndentation(node);
+        string parentIndentation = GetParentIndentation(node);
+        string expectedIndentation = parentIndentation;
 
         if (nothingButTriviaInFront)
         {
@@ -118,12 +119,34 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             }
         }
 
-        // Immediately add the current node expected indentation to the cache
+        // Immediately add the current node expected indentation to the cache1
         // After reformatting a parent node might be lost.
         // Argument and ArgumentList are special cases that should not be added to the cache
         if (node.Kind() is not (SyntaxKind.Argument or SyntaxKind.ArgumentList))
         {
             _indentationCache[node] = expectedIndentation;
+        }
+
+        if (node.Kind() is SyntaxKind.InvocationExpression
+            && node.Parent?.Kind()
+                is SyntaxKind.SimpleMemberAccessExpression
+                or SyntaxKind.ConditionalAccessExpression
+                or SyntaxKind.MemberBindingExpression
+        )
+        {
+            // Special case. Because of the structure of the syntax tree, in the case of chained methods,
+            // the indentation of MemberAccessExpressionSyntax is calculated from the root of a chain, which is fine.
+            // But the indentation of the argument also becomes equal to the indentation of the root chain node, which is not fine.
+            // The content must be shifted one indent to the right, so to have double indentation.
+            // I am adding the additional indentation by adding each argument to the indentation cache with extra indentation.
+            // The argument list should be added with the single increased indentation to properly format the parentheses.
+            //expectedIndentation += _singleIndentation;
+            _indentationCache[((InvocationExpressionSyntax)node).ArgumentList] =
+                parentIndentation + _singleIndentation;
+            // foreach (ArgumentSyntax argumentSyntax in invocationExpressionSyntax.ArgumentList.Arguments)
+            // {
+            //     _indentationCache[argumentSyntax] = doubleIncreasedParentIndentation;
+            // }
         }
 
         SyntaxNodeOrToken? newNodeOrToken = ReformatLeadingTrivia(node, expectedIndentation);
@@ -373,7 +396,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         {
             ExpressionSyntax newLeft =
                 node.Left.WithTrailingTrivia(
-                    node.OperatorToken.TrailingTrivia.AppendNewLine(_newLine)
+                    node.Left.GetTrailingTrivia().AppendNewLine(_newLine)
                 );
 
             node = node.WithLeft(newLeft);
@@ -449,6 +472,59 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         }
 
         return base.VisitParenthesizedExpression(node);
+    }
+
+    public override SyntaxNode? VisitMemberAccessExpression(MemberAccessExpressionSyntax node)
+    {
+        SyntaxNode? nextTokenParent = node.OperatorToken.GetNextToken().Parent;
+        if (nextTokenParent is null)
+        {
+            return base.VisitMemberAccessExpression(node);
+        }
+
+        bool leftAndOperatorOnSameLine = CheckOnTheSameLine(node.SyntaxTree, node.Expression.Span, node.OperatorToken.Span);
+        bool operatorAndRightOnSameLine = CheckOnTheSameLine(node.SyntaxTree, node.OperatorToken.Span, nextTokenParent.Span);
+        bool operatorAndRightOnDifferentLines = !operatorAndRightOnSameLine;
+
+        if (leftAndOperatorOnSameLine
+            && (node.Expression.IsMultiLine(cancellationToken: _cancellationToken)
+                || nextTokenParent.IsMultiLine(cancellationToken: _cancellationToken)
+            )
+        )
+        {
+            ExpressionSyntax newLeft =
+                node.Expression.WithTrailingTrivia(
+                    node.Expression.GetTrailingTrivia().AppendNewLine(_newLine)
+                );
+
+            node = node.WithExpression(newLeft);
+
+            ChangesApplied = true;
+            // Immediate stop if at least one change was applied
+            if (DoAnalysisOnly)
+            {
+                return node;
+            }
+        }
+
+        if (operatorAndRightOnDifferentLines)
+        {
+            SyntaxToken newOperator =
+                node.OperatorToken.WithTrailingTrivia(
+                    node.OperatorToken.TrailingTrivia.TrimEnd()
+                );
+
+            node = node.WithOperatorToken(newOperator);
+
+            ChangesApplied = true;
+            // Immediate stop if at least one change was applied
+            if (DoAnalysisOnly)
+            {
+                return node;
+            }
+        }
+
+        return base.VisitMemberAccessExpression(node);
     }
 
     public override SyntaxNode? VisitSelectClause(SelectClauseSyntax node)
