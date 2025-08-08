@@ -83,6 +83,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                 is not (
                     SyntaxKind.GlobalStatement
                     or SyntaxKind.CompilationUnit
+
+                    or SyntaxKind.Argument
+                    or SyntaxKind.ArgumentList
+
                     or SyntaxKind.Block
                     or SyntaxKind.ObjectInitializerExpression
                     or SyntaxKind.ArrayInitializerExpression
@@ -119,35 +123,35 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             }
         }
 
-        // Immediately add the current node expected indentation to the cache1
+        // Immediately add the current node expected indentation to the cache
         // After reformatting a parent node might be lost.
         // Argument and ArgumentList are special cases that should not be added to the cache
-        if (node.Kind() is not (SyntaxKind.Argument or SyntaxKind.ArgumentList))
+        //if (node.Kind() is not (SyntaxKind.Argument or SyntaxKind.ArgumentList))
         {
             _indentationCache[node] = expectedIndentation;
         }
 
-        if (node.Kind() is SyntaxKind.InvocationExpression
-            && node.Parent?.Kind()
-                is SyntaxKind.SimpleMemberAccessExpression
-                or SyntaxKind.ConditionalAccessExpression
-                or SyntaxKind.MemberBindingExpression
-        )
-        {
-            // Special case. Because of the structure of the syntax tree, in the case of chained methods,
-            // the indentation of MemberAccessExpressionSyntax is calculated from the root of a chain, which is fine.
-            // But the indentation of the argument also becomes equal to the indentation of the root chain node, which is not fine.
-            // The content must be shifted one indent to the right, so to have double indentation.
-            // I am adding the additional indentation by adding each argument to the indentation cache with extra indentation.
-            // The argument list should be added with the single increased indentation to properly format the parentheses.
-            //expectedIndentation += _singleIndentation;
-            _indentationCache[((InvocationExpressionSyntax)node).ArgumentList] =
-                parentIndentation + _singleIndentation;
-            // foreach (ArgumentSyntax argumentSyntax in invocationExpressionSyntax.ArgumentList.Arguments)
-            // {
-            //     _indentationCache[argumentSyntax] = doubleIncreasedParentIndentation;
-            // }
-        }
+        // if (node.Kind() is SyntaxKind.InvocationExpression
+        //     && node.Parent?.Kind()
+        //         is SyntaxKind.SimpleMemberAccessExpression
+        //         or SyntaxKind.ConditionalAccessExpression
+        //         or SyntaxKind.MemberBindingExpression
+        // )
+        // {
+        //     // Special case. Because of the structure of the syntax tree, in the case of chained methods,
+        //     // the indentation of MemberAccessExpressionSyntax is calculated from the root of a chain, which is fine.
+        //     // But the indentation of the argument also becomes equal to the indentation of the root chain node, which is not fine.
+        //     // The content must be shifted one indent to the right, so to have double indentation.
+        //     // I am adding the additional indentation by adding each argument to the indentation cache with extra indentation.
+        //     // The argument list should be added with the single increased indentation to properly format the parentheses.
+        //     //expectedIndentation += _singleIndentation;
+        //     _indentationCache[((InvocationExpressionSyntax)node).ArgumentList] =
+        //         parentIndentation + _singleIndentation;
+        //     // foreach (ArgumentSyntax argumentSyntax in invocationExpressionSyntax.ArgumentList.Arguments)
+        //     // {
+        //     //     _indentationCache[argumentSyntax] = doubleIncreasedParentIndentation;
+        //     // }
+        // }
 
         SyntaxNodeOrToken? newNodeOrToken = ReformatLeadingTrivia(node, expectedIndentation);
         // Are there changes?
