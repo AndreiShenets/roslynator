@@ -287,6 +287,12 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                         or SyntaxKind.CloseBraceToken
                         or SyntaxKind.MultiLineRawStringLiteralToken
                 )
+                // Braces, brackets or parentheses are on the same line, but there is actually nothing between
+                && !(
+                    (tokenKind is SyntaxKind.OpenParenToken && nextToken.IsKind(SyntaxKind.CloseParenToken))
+                    || (tokenKind is SyntaxKind.OpenBraceToken && nextToken.IsKind(SyntaxKind.CloseBraceToken))
+                    || (tokenKind is SyntaxKind.OpenBracketToken && nextToken.IsKind(SyntaxKind.CloseBracketToken))
+                )
             )
             {
                 token = token.WithTrailingTrivia(token.TrailingTrivia.AppendNewLine(_newLine));
@@ -476,19 +482,19 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
     public override SyntaxNode? VisitMemberAccessExpression(MemberAccessExpressionSyntax node)
     {
-        SyntaxNode? nextTokenParent = node.OperatorToken.GetNextToken().Parent;
-        if (nextTokenParent is null)
+        SyntaxNode? rightPart = node.Parent;
+        if (rightPart is null)
         {
             return base.VisitMemberAccessExpression(node);
         }
 
         bool leftAndOperatorOnSameLine = CheckOnTheSameLine(node.SyntaxTree, node.Expression.Span, node.OperatorToken.Span);
-        bool operatorAndRightOnSameLine = CheckOnTheSameLine(node.SyntaxTree, node.OperatorToken.Span, nextTokenParent.Span);
+        bool operatorAndRightOnSameLine = CheckOnTheSameLine(node.SyntaxTree, node.OperatorToken.Span, rightPart.Span);
         bool operatorAndRightOnDifferentLines = !operatorAndRightOnSameLine;
 
         if (leftAndOperatorOnSameLine
             && (node.Expression.IsMultiLine(cancellationToken: _cancellationToken)
-                || nextTokenParent.IsMultiLine(cancellationToken: _cancellationToken)
+                || rightPart.IsMultiLine(cancellationToken: _cancellationToken)
             )
         )
         {

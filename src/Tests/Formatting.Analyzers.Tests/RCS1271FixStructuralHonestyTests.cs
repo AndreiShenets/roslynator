@@ -1081,24 +1081,24 @@ public class RCS1271FixStructuralHonestyTests :
             );
             """,
             additionalFiles:
-            new (string source, string expectedSource)[]
-            {
-                (
-                    source:
-                    """
-                    using System;
-                    using System.Threading.Tasks;
+                new (string source, string expectedSource)[]
+                {
+                    (
+                        source:
+                        """
+                        using System;
+                        using System.Threading.Tasks;
 
-                    public class C
-                    {
-                        public static C Instance { get; } = new C();
+                        public class C
+                        {
+                            public static C Instance { get; } = new C();
 
-                        public Task<bool> MyMethodAsync(Func<int, int, int, Task<int>> f) => Task.FromResult(true);
-                    }
-                    """,
-                    expectedSource: null
-                )
-            },
+                            public Task<bool> MyMethodAsync(Func<int, int, int, Task<int>> f) => Task.FromResult(true);
+                        }
+                        """,
+                        expectedSource: null
+                    )
+                },
             options: Options.WithCompilationOptions(
                 Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
             )
@@ -3615,6 +3615,255 @@ public class RCS1271FixStructuralHonestyTests :
         );
     }
 
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Chaining()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System.Linq;
+
+            int x [|= Enumerable.Range(1, 10)
+                .Select(i => i)
+                .Where(i => i > 5)
+                .Select(i => i).Count()|];
+            """,
+            """
+            using System.Linq;
+
+            int x =
+                Enumerable.Range(1, 10)
+                    .Select(i => i)
+                    .Where(i => i > 5)
+                    .Select(i => i).Count();
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Chaining_single_lined()
+    {
+        await VerifyNoDiagnosticAsync(
+            """
+            using System.Linq;
+
+            int x = Enumerable.Range(1, 10).Where(i => i > 5).Select(i => i).Count();
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Chaining_top_level()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System.Linq;
+
+            [|[|[|[|[|Enumerable.Range(1, 10).Select(i => i)|]
+            .Where([|i => {
+                return i > 5; }|])|].Where([|i => {
+            return i > 6; }|])|]
+            .Select(i => i)|].Count()|];
+            """,
+            """
+            using System.Linq;
+
+            Enumerable.Range(1, 10)
+                .Select(i => i)
+                .Where(
+                    i =>
+                    {
+                        return i > 5;
+                    }
+                )
+                .Where(
+                    i =>
+                    {
+                        return i > 6;
+                    }
+                )
+                .Select(i => i)
+                .Count();
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Chaining_as_method_param()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System.Linq;
+
+            [|C.Check([|[|[|[|[|Enumerable.Range(1, 10)
+            .Select(i => i)|]
+            .Where([|i => {
+                return i > 5; }|])|].Where([|i => {
+            return i > 6; }|])|]
+            .Select(i => i)|].Count()|])|];
+            """,
+            """
+            using System.Linq;
+
+            C.Check(
+                Enumerable.Range(1, 10)
+                    .Select(i => i)
+                    .Where(
+                        i =>
+                        {
+                            return i > 5;
+                        }
+                    )
+                    .Where(
+                        i =>
+                        {
+                            return i > 6;
+                        }
+                    )
+                    .Select(i => i)
+                    .Count()
+            );
+            """,
+            additionalFiles:
+                new (string source, string expectedSource)[]
+                {
+                    (
+                        source:
+                        """
+                        public static class C 
+                        {
+                            public static bool Check(int i) => true;
+                        }
+                        """,
+                        expectedSource: null
+                    )
+                },
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Chaining_in_the_chaining_comments_and_complex_accesses()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System.Linq;
+
+                var x = Enumerable.Range(1, 10).Select(i => new C());
+                [|[|x.SelectMany([|c => {
+                        return [|[|c.M() // Trailing
+                    // leading
+                    .M() /*
+
+            trailing multiline1
+            trailing multiline2 */|]
+                    .M()|]
+                    ?[|[|.M()!.M()
+                    .X.X[0]
+                    .M()|]
+                    .E
+                    .SelectMany([|i => {
+                        return [|[|i.M() // Trailing
+                            // leading
+                            .M() /*
+                        multiline1
+                        multiline2 */|]
+                            .M()|]
+                            ?[|[|.M()!.M()
+                            .X.X[0]
+                            .M()|]
+                            .E
+                            .Select([|e => {
+                                return e;
+                            }|])|];
+                    }|])|];
+                }|])|].ToList()|];
+            """,
+            """
+            using System.Linq;
+
+            var x = Enumerable.Range(1, 10).Select(i => new C());
+            x
+                .SelectMany(
+                    c =>
+                    {
+                        return c.M() // Trailing
+                            // leading
+                            .M() /*
+            
+            trailing multiline1
+            trailing multiline2 */
+                            .M()
+                            ?.M()
+                            !.M()
+                            .X
+                            .X[0]
+                            .M()
+                            .E
+                            .SelectMany(
+                                i =>
+                                {
+                                    return i.M() // Trailing
+                                        // leading
+                                        .M() /*
+                                    multiline1
+                                    multiline2 */
+                                        .M()
+                                        ?.M()
+                                        !.M()
+                                        .X
+                                        .X[0]
+                                        .M()
+                                        .E
+                                        .Select(
+                                            e =>
+                                            {
+                                                return e;
+                                            }
+                                        );
+                                }
+                            );
+                    }
+                )
+                .ToList();
+            """,
+            additionalFiles:
+                new (string source, string expectedSource)[]
+                {
+                    (
+                        source:
+                        """
+                        using System.Linq;
+                        using System.Collections.Generic;
+
+                        public sealed class C
+                        {
+                            public C X => this;
+                            public C this[int index] => this;
+                            public IEnumerable<C> E => Enumerable.Empty<C>();
+
+                            public C M() => this;
+                        }
+                        """,
+                        expectedSource: null
+                    )
+                },
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
     // Chaining in the chained chaining
 
 //
@@ -3678,89 +3927,6 @@ public class RCS1271FixStructuralHonestyTests :
 //             options: Options.WithCompilationOptions(Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication))
 //         );
 //     }
-
-    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task Chaining()
-    {
-        await VerifyDiagnosticAndFixAsync(
-            """
-            using System.Linq;
-
-            int x [|= Enumerable.Range(1, 10)
-                .Select(i => i)
-                .Where(i => i > 5)
-                .Select(i => i).Count()|];
-            """,
-            """
-            using System.Linq;
-
-            int x =
-                Enumerable.Range(1, 10)
-                    .Select(i => i)
-                    .Where(i => i > 5)
-                    .Select(i => i).Count();
-            """,
-            options: Options.WithCompilationOptions(
-                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
-            )
-        );
-    }
-
-    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-    public async Task Chaining_as_method_param()
-    {
-        await VerifyDiagnosticAndFixAsync(
-            """
-            using System.Linq;
-
-            [|C.Check([|[|[|[|[|Enumerable.Range(1, 10)
-            .Select(i => i)|]
-            .Where([|i => {
-                return i > 5; }|])|].Where([|i => {
-            return i > 6; }|])|]
-            .Select(i => i)|].Count()|])|];
-            """,
-            """
-            using System.Linq;
-
-            C.Check(
-                Enumerable.Range(1, 10)
-                    .Select(i => i)
-                    .Where(
-                        i =>
-                        {
-                            return i > 5;
-                        }
-                    )
-                    .Where(
-                        i =>
-                        {
-                            return i > 6;
-                        }
-                    )
-                    .Select(i => i)
-                    .Count()
-            );
-            """,
-            additionalFiles:
-                new (string source, string expectedSource)[]
-                {
-                    (
-                        source:
-                        """
-                        public static class C 
-                        {
-                            public static bool Check(int i) => true;
-                        }
-                        """,
-                        expectedSource: null
-                    )
-                },
-            options: Options.WithCompilationOptions(
-                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
-            )
-        );
-    }
 
 // class C
 // {
