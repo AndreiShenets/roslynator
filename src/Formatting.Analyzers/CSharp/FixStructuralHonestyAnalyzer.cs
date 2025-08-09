@@ -3,6 +3,7 @@
 #nullable enable
 
 using System.Collections.Immutable;
+using System.Linq;
 using System.Threading;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -72,11 +73,16 @@ public sealed class FixStructuralHonestyAnalyzer : BaseDiagnosticAnalyzer
             SyntaxKind.LeftShiftAssignmentExpression,
             SyntaxKind.RightShiftAssignmentExpression,
             SyntaxKind.CoalesceAssignmentExpression,
-            SyntaxKind.SimpleAssignmentExpression,
             SyntaxKind.UnsignedRightShiftAssignmentExpression,
 
             SyntaxKind.ClassDeclaration,
-            SyntaxKind.ParenthesizedExpression
+            SyntaxKind.ParenthesizedExpression,
+
+            SyntaxKind.SimpleMemberAccessExpression,
+            SyntaxKind.ConditionalAccessExpression,
+            SyntaxKind.MemberBindingExpression,
+
+            SyntaxKind.ArgumentList
         );
     }
 
@@ -94,6 +100,19 @@ public sealed class FixStructuralHonestyAnalyzer : BaseDiagnosticAnalyzer
         }
 
         TextSpan span = node.GetSpan();
+
+        bool absorbingDiagnosticExists =
+            node.SyntaxTree.GetDiagnostics()
+                .Any(
+                    d =>
+                        d.Id == DiagnosticRules.FixStructuralHonesty.Id
+                        && d.Location.SourceSpan.Contains(span)
+                );
+
+        if (absorbingDiagnosticExists)
+        {
+            return;
+        }
 
         DiagnosticHelpers.ReportDiagnostic(
             context,

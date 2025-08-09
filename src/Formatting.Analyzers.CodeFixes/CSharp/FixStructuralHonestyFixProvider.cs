@@ -70,9 +70,15 @@ public sealed class FixStructuralHonestyFixProvider : BaseCodeFixProvider
                         case SyntaxKind.OrAssignmentExpression:
                         case SyntaxKind.LeftShiftAssignmentExpression:
                         case SyntaxKind.RightShiftAssignmentExpression:
-                        case SyntaxKind.CoalesceAssignmentExpression:
                         case SyntaxKind.SimpleAssignmentExpression:
+                        case SyntaxKind.CoalesceAssignmentExpression:
                         case SyntaxKind.UnsignedRightShiftAssignmentExpression:
+
+                        case SyntaxKind.SimpleMemberAccessExpression:
+                        case SyntaxKind.ConditionalAccessExpression:
+                        case SyntaxKind.MemberBindingExpression:
+
+                        case SyntaxKind.ArgumentList:
 
                         case SyntaxKind.ClassDeclaration:
                         case SyntaxKind.ParenthesizedExpression:

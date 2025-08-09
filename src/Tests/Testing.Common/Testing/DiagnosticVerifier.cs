@@ -491,7 +491,14 @@ public abstract class DiagnosticVerifier<TAnalyzer, TFixProvider> : CodeVerifier
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                ImmutableArray<Diagnostic> diagnostics = await GetAnalyzerDiagnosticsAsync(compilation, analyzer, document.Project.AnalyzerOptions, DiagnosticComparer.SpanStartEnd, cancellationToken);
+                ImmutableArray<Diagnostic> diagnostics =
+                    await GetAnalyzerDiagnosticsAsync(
+                        compilation,
+                        analyzer,
+                        document.Project.AnalyzerOptions,
+                        DiagnosticComparer.SpanStartEnd,
+                        cancellationToken
+                    );
 
                 int length = diagnostics.Length;
 

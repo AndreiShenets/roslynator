@@ -128,7 +128,7 @@ internal abstract class DiagnosticComparer : IComparer<Diagnostic>, IEqualityCom
             int comparisonResult =
                 startComparisonResult switch
                 {
-                    0 => x.Location.SourceSpan.End.CompareTo(y.Location.SourceSpan.End),
+                    0 => x.Location.SourceSpan.End.CompareTo(y.Location.SourceSpan.End) * -1 /* to have the widest diagnostics first */,
                     _ => startComparisonResult
                 };
 
