@@ -4216,4 +4216,7 @@ public class RCS1271FixStructuralHonestyTests :
     //     is SyntaxKind.OpenParenToken
     //         or SyntaxKind.OpenBraceToken
     //         or SyntaxKind.EqualsGreaterThanToken
+
+    // Variable, Property, Field, Const, other declaration syntaxes to be added as tests and into analyzer and fix providers.
+    // Anything that can be on the left side of EqualsValueClauseSyntax
 }
