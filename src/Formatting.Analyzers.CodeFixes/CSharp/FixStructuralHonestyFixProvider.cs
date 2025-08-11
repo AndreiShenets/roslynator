@@ -60,6 +60,7 @@ public sealed class FixStructuralHonestyFixProvider : BaseCodeFixProvider
                         case SyntaxKind.InterpolatedStringExpression:
 
                         case SyntaxKind.EqualsValueClause:
+                        case SyntaxKind.SimpleAssignmentExpression:
                         case SyntaxKind.AddAssignmentExpression:
                         case SyntaxKind.SubtractAssignmentExpression:
                         case SyntaxKind.MultiplyAssignmentExpression:
@@ -70,7 +71,6 @@ public sealed class FixStructuralHonestyFixProvider : BaseCodeFixProvider
                         case SyntaxKind.OrAssignmentExpression:
                         case SyntaxKind.LeftShiftAssignmentExpression:
                         case SyntaxKind.RightShiftAssignmentExpression:
-                        case SyntaxKind.SimpleAssignmentExpression:
                         case SyntaxKind.CoalesceAssignmentExpression:
                         case SyntaxKind.UnsignedRightShiftAssignmentExpression:
 

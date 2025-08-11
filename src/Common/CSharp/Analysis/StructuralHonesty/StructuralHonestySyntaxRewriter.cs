@@ -132,9 +132,6 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
     {
         SyntaxTree syntaxTree = node.SyntaxTree;
 
-        bool singleLineOnLeft = node.Left.IsSingleLine(cancellationToken: _cancellationToken);
-        bool multilineOnLeft = !singleLineOnLeft;
-
         // The middle is multi-lined in the case of the trailing multi-line comments
         TextSpan trimmedOperatorTokenFullSpan = node.OperatorToken.GetTrimmedFullSpan();
         bool singleLineInMiddle = trimmedOperatorTokenFullSpan.IsSingleLine(syntaxTree, _cancellationToken);
@@ -150,11 +147,9 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         _indentationCache[node] = expectedIndentationLeft;
         _indentationCache[node.Left] = expectedIndentationLeft;
 
-        bool leftAndMiddleOnSameLine = CheckOnTheSameLine(syntaxTree, node.Left.GetTrimmedFullSpan(), node.OperatorToken.FullSpan);
         bool middleAndRightOnSameLine = CheckOnTheSameLine(syntaxTree, trimmedOperatorTokenFullSpan, node.Right.FullSpan);
 
         bool nothingInFrontOfLeft = CheckNothingButTriviaInFront(node.Left);
-        bool nothingInFrontOfMiddle;
         bool nothingInFrontOfRight;
 
         if (nothingInFrontOfLeft)
@@ -169,30 +164,13 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             }
         }
 
-        if (leftAndMiddleOnSameLine && (multilineOnLeft || multilineInMiddle || multilineOnRight))
-        {
-            node =
-                node.WithLeft(
-                    node.Left.WithTrailingTrivia(
-                        node.Left.GetTrailingTrivia().AppendNewLine(_newLine)
-                    )
-                );
-            _indentationCache[node] = expectedIndentationLeft;
-            _indentationCache[node.Left] = expectedIndentationLeft;
-
-            ChangesApplied = true;
-
-            expectedIndentationMiddle += _singleIndentation;
-            expectedIndentationRight = expectedIndentationMiddle;
-            nothingInFrontOfMiddle = true;
-        }
-        else
-        {
-            nothingInFrontOfMiddle = CheckNothingButTriviaInFront(node.OperatorToken);
-        }
+        bool nothingInFrontOfMiddle = CheckNothingButTriviaInFront(node.OperatorToken);
 
         if (nothingInFrontOfMiddle)
         {
+            expectedIndentationMiddle += _singleIndentation;
+            expectedIndentationRight = expectedIndentationMiddle;
+
             SyntaxNodeOrToken? newMiddle = ReformatLeadingTrivia(node.OperatorToken, expectedIndentationMiddle);
             if (newMiddle is not null)
             {
@@ -785,7 +763,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             }
         }
 
-        if (!middleAndRightOnSameLine)
+        if (!middleAndRightOnSameLine && node.Block is null)
         {
             expectedIndentationRight += _singleIndentation;
         }
@@ -1425,10 +1403,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             }
         }
 
-        if (CheckNothingButMultilineCommentFromParentTrailingTrivia(syntaxTree, textLines, nodeOrToken))
-        {
-            return true;
-        }
+        // if (CheckNothingButMultilineCommentFromParentTrailingTrivia(syntaxTree, textLines, nodeOrToken))
+        // {
+        //     return true;
+        // }
 
         return false;
     }

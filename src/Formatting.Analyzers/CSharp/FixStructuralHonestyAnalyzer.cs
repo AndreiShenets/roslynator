@@ -62,6 +62,7 @@ public sealed class FixStructuralHonestyAnalyzer : BaseDiagnosticAnalyzer
             SyntaxKind.InterpolatedStringExpression,
 
             SyntaxKind.EqualsValueClause,
+            SyntaxKind.SimpleAssignmentExpression,
             SyntaxKind.AddAssignmentExpression,
             SyntaxKind.SubtractAssignmentExpression,
             SyntaxKind.MultiplyAssignmentExpression,
