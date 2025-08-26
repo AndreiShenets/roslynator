@@ -381,6 +381,35 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         return base.VisitParenthesizedExpression(node);
     }
 
+    public override SyntaxNode? VisitInvocationExpression(InvocationExpressionSyntax node)
+    {
+        if (node.Parent is MemberAccessExpressionSyntax)
+        {
+            // Such invocation expressions are indented in the parent
+            return base.VisitInvocationExpression(node);
+        }
+
+        bool nothingInFrontOfNode = CheckNothingButTriviaInFront(node);
+
+        if (nothingInFrontOfNode)
+        {
+            string expectedIndentation = GetExpectedIndentation(node);
+            _indentationCache[node] = expectedIndentation;
+            _indentationCache[node.ArgumentList] = expectedIndentation;
+
+            SyntaxNodeOrToken? newNode = ReformatLeadingTrivia(node, expectedIndentation);
+            if (newNode is not null)
+            {
+                node = (InvocationExpressionSyntax)newNode.Value.AsNode()!;
+                _indentationCache[node] = expectedIndentation;
+                _indentationCache[node.ArgumentList] = expectedIndentation;
+                ChangesApplied = true;
+            }
+        }
+
+        return base.VisitInvocationExpression(node);
+    }
+
     public override SyntaxNode? VisitMemberAccessExpression(MemberAccessExpressionSyntax node)
     {
         SyntaxNode? fullRightPart = node.Parent;
@@ -405,13 +434,17 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         bool leftAndMiddleOnSameLine = CheckOnTheSameLine(syntaxTree, node.Expression.GetTrimmedFullSpan(), node.OperatorToken.FullSpan);
         bool middleAndRightOnSameLine = CheckOnTheSameLine(syntaxTree, trimmedOperatorTokenFullSpan, node.Name.FullSpan);
 
+        (bool multilinePartsBefore, int dotsBefore, int dotsBeforeOnNewLine, int dotsAfter) = AnalyzeChain(node);
+
         string? expectedIndentationLeft = GetSelfIndentation(node.Expression);
         string expectedIndentationMiddle =
             GetMemberAccessExpressionDotExpectedIndentation(node, nothingInFront: !leftAndMiddleOnSameLine);
 
-        (bool multilinePartsBefore, int dotsBefore) = AnalyzeChain(node);
-
         _indentationCache[node] = expectedIndentationMiddle;
+        if (expectedIndentationLeft is not null)
+        {
+            _indentationCache[node.Expression] = expectedIndentationLeft;
+        }
 
         bool singleLineOnRight = true;
         if (fullRightPart is InvocationExpressionSyntax invocationExpressionSyntax)
@@ -434,9 +467,13 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         // after the dot should be implemented.
 
         if (leftAndMiddleOnSameLine
-            && (multilineOnLeft || multilineInMiddle || multilineOnRight)
+            && (multilineOnLeft
+                || multilineInMiddle
+                || multilineOnRight
+                || dotsBeforeOnNewLine > 0
+            )
             // This magic number is a preference of complexity or number of dots before the member access expression to trigger the next line
-            && (multilinePartsBefore || dotsBefore > 1)
+            && (multilinePartsBefore || dotsBefore > 1 || dotsBeforeOnNewLine > 0)
         )
         {
             node =
@@ -505,19 +542,28 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         return base.VisitMemberAccessExpression(node);
     }
 
-    private (bool MultilinePartsBefore, int DotsBefore) AnalyzeChain(MemberAccessExpressionSyntax node)
+    private (bool MultilinePartsBefore, int DotsBefore, int DotsBeforeOnNewLine, int DotsAfter) AnalyzeChain(MemberAccessExpressionSyntax node)
     {
         bool multilinePartsBefore = false;
         int dotsBefore = 0;
+        int dotsBeforeOnNewLine = 0;
+        int dotsAfter = 0;
 
-        SyntaxNode? parent = node.Parent;
+        SyntaxTree syntaxTree = node.SyntaxTree;
+
+        SyntaxNode? parent = node.Expression;
         while (parent != null)
         {
             switch (parent)
             {
                 case MemberAccessExpressionSyntax memberAccessExpressionSyntax:
-                    parent = parent.Parent;
                     ++dotsBefore;
+                    bool leftAndMiddleOnSameLine =
+                        CheckOnTheSameLine(syntaxTree, node.Expression.GetTrimmedFullSpan(), node.OperatorToken.FullSpan);
+                    if (!leftAndMiddleOnSameLine)
+                    {
+                        ++dotsBeforeOnNewLine;
+                    }
 
                     SyntaxNode? accessExpressionParent = memberAccessExpressionSyntax.Parent;
                     if (!multilinePartsBefore
@@ -528,9 +574,11 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                         multilinePartsBefore = true;
                     }
 
+                    parent = memberAccessExpressionSyntax.Expression;
+
                     break;
-                case InvocationExpressionSyntax:
-                    parent = parent.Parent;
+                case InvocationExpressionSyntax invocationExpressionSyntax:
+                    parent = invocationExpressionSyntax.Expression;
                     break;
                 default:
                     parent = null;
@@ -538,7 +586,25 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             }
         }
 
-        return (multilinePartsBefore, dotsBefore);
+        parent = node.Parent;
+        while (parent != null)
+        {
+            switch (parent)
+            {
+                case MemberAccessExpressionSyntax memberAccessExpressionSyntax:
+                    ++dotsAfter;
+                    parent = memberAccessExpressionSyntax.Parent;
+                    break;
+                case InvocationExpressionSyntax invocationExpressionSyntax:
+                    parent = invocationExpressionSyntax.Parent;
+                    break;
+                default:
+                    parent = null;
+                    break;
+            }
+        }
+
+        return (multilinePartsBefore, dotsBefore, dotsBeforeOnNewLine, dotsAfter);
     }
 
     private bool CheckInvocationExpressionSyntaxMultiline(InvocationExpressionSyntax invocationExpressionSyntax)
@@ -549,7 +615,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         return !singleLine;
     }
 
-    private string GetMemberAccessExpressionDotExpectedIndentation(MemberAccessExpressionSyntax node, bool nothingInFront)
+    private string GetMemberAccessExpressionDotExpectedIndentation(
+        MemberAccessExpressionSyntax node,
+        bool nothingInFront
+    )
     {
         if (ReferenceEquals(_root, node))
         {
@@ -773,29 +842,6 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         }
 
         return base.VisitAwaitExpression(node);
-    }
-
-    public override SyntaxNode? VisitInvocationExpression(InvocationExpressionSyntax node)
-    {
-        bool nothingInFrontOfNode = CheckNothingButTriviaInFront(node);
-
-        if (nothingInFrontOfNode)
-        {
-            string expectedIndentation = GetExpectedIndentation(node);
-            _indentationCache[node] = expectedIndentation;
-            _indentationCache[node.ArgumentList] = expectedIndentation;
-
-            SyntaxNodeOrToken? newNode = ReformatLeadingTrivia(node, expectedIndentation);
-            if (newNode is not null)
-            {
-                node = (InvocationExpressionSyntax)newNode.Value.AsNode()!;
-                _indentationCache[node] = expectedIndentation;
-                _indentationCache[node.ArgumentList] = expectedIndentation;
-                ChangesApplied = true;
-            }
-        }
-
-        return base.VisitInvocationExpression(node);
     }
 
     public override SyntaxNode? VisitSimpleLambdaExpression(SimpleLambdaExpressionSyntax node)
@@ -1612,7 +1658,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         return openParenLinePosition.Line == closeParenLinePosition.Line;
     }
 
-    private string GetExpectedIndentation(SyntaxNode node)
+    private string GetExpectedIndentation(SyntaxNode node, bool skipIndentation = false)
     {
         string? selfIndentation = GetSelfIndentation(node);
         if (selfIndentation is not null)
@@ -1630,6 +1676,11 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             }
 
             parentIndentation = _rootNodeIndentation;
+        }
+
+        if (skipIndentation)
+        {
+            return parentIndentation;
         }
 
         return parentIndentation + _singleIndentation;
@@ -1653,20 +1704,20 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         {
             SyntaxKind? parentKind = parent.Kind();
 
-            if (parentKind is SyntaxKind.InvocationExpression)
-            {
-                InvocationExpressionSyntax invocationExpressionSyntax = (InvocationExpressionSyntax)parent;
-                MemberAccessExpressionSyntax? memberAccessExpressionSyntax =
-                    (MemberAccessExpressionSyntax?)invocationExpressionSyntax.ChildNodesAndTokens()
-                        .FirstOrDefault(n => n.IsNode && n.AsNode() is MemberAccessExpressionSyntax);
-                if (memberAccessExpressionSyntax is not null && CheckNothingButTriviaInFront(memberAccessExpressionSyntax))
-                {
-                    if (_indentationCache.TryGetValue(memberAccessExpressionSyntax, out string? memberAccessIndentation))
-                    {
-                        return memberAccessIndentation;
-                    }
-                }
-            }
+            // if (parentKind is SyntaxKind.InvocationExpression)
+            // {
+            //     InvocationExpressionSyntax invocationExpressionSyntax = (InvocationExpressionSyntax)parent;
+            //     MemberAccessExpressionSyntax? memberAccessExpressionSyntax =
+            //         (MemberAccessExpressionSyntax?)invocationExpressionSyntax.ChildNodesAndTokens()
+            //             .FirstOrDefault(n => n.IsNode && n.AsNode() is MemberAccessExpressionSyntax);
+            //     if (memberAccessExpressionSyntax is not null && CheckNothingButTriviaInFront(memberAccessExpressionSyntax))
+            //     {
+            //         if (_indentationCache.TryGetValue(memberAccessExpressionSyntax, out string? memberAccessIndentation))
+            //         {
+            //             return memberAccessIndentation;
+            //         }
+            //     }
+            // }
 
             if (_indentationCache.TryGetValue(parent, out string? indentation))
             {
