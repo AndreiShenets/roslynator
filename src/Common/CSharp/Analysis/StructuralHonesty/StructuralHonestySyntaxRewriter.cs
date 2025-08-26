@@ -68,10 +68,8 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             return token;
         }
 
-        // It is not expected to visit trivia within this writer, so I can just return the token
+        // It is not expected to visit trivia within this rewriter, so I can just return the token
         return token;
-
-        //return base.VisitToken(token);
     }
 
     public override SyntaxNode? VisitEqualsValueClause(EqualsValueClauseSyntax node)
@@ -391,9 +389,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         bool nothingInFrontOfNode = CheckNothingButTriviaInFront(node);
 
+        string expectedIndentation = GetExpectedIndentation(node);
+
         if (nothingInFrontOfNode)
         {
-            string expectedIndentation = GetExpectedIndentation(node);
             _indentationCache[node] = expectedIndentation;
             _indentationCache[node.ArgumentList] = expectedIndentation;
 
@@ -436,7 +435,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         (bool multilinePartsBefore, int dotsBefore, int dotsBeforeOnNewLine, int dotsAfter) = AnalyzeChain(node);
 
-        string? expectedIndentationLeft = GetSelfIndentation(node.Expression);
+        string? expectedIndentationLeft = GetSelfIndentation(node);
         string expectedIndentationMiddle =
             GetMemberAccessExpressionDotExpectedIndentation(node, nothingInFront: !leftAndMiddleOnSameLine);
 
@@ -542,7 +541,8 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         return base.VisitMemberAccessExpression(node);
     }
 
-    private (bool MultilinePartsBefore, int DotsBefore, int DotsBeforeOnNewLine, int DotsAfter) AnalyzeChain(MemberAccessExpressionSyntax node)
+    private (bool MultilinePartsBefore, int DotsBefore, int DotsBeforeOnNewLine, int DotsAfter)
+        AnalyzeChain(MemberAccessExpressionSyntax node)
     {
         bool multilinePartsBefore = false;
         int dotsBefore = 0;
@@ -628,6 +628,47 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             }
 
             return _rootNodeIndentation;
+        }
+
+        MemberAccessExpressionSyntax? topLevelMemberAccessExpression = null;
+        InvocationExpressionSyntax? topInvocationExpression = null;
+        SyntaxNode? parent = node.Parent;
+        while (parent != null)
+        {
+            switch (parent)
+            {
+                case MemberAccessExpressionSyntax memberAccessExpressionSyntax:
+                    topLevelMemberAccessExpression = memberAccessExpressionSyntax;
+                    topInvocationExpression = null;
+                    parent = memberAccessExpressionSyntax.Parent;
+                    break;
+                case InvocationExpressionSyntax invocationExpressionSyntax:
+                    topInvocationExpression = invocationExpressionSyntax;
+                    topLevelMemberAccessExpression = null;
+                    parent = invocationExpressionSyntax.Parent;
+                    break;
+                default:
+                    parent = null;
+                    break;
+            }
+        }
+
+        if (topInvocationExpression is not null)
+        {
+            string? selfIndentation = GetSelfIndentation(topInvocationExpression);
+            if (selfIndentation is not null)
+            {
+                return selfIndentation + _singleIndentation;
+            }
+        }
+
+        if (topLevelMemberAccessExpression is not null)
+        {
+            string? selfIndentation = GetSelfIndentation(topLevelMemberAccessExpression);
+            if (selfIndentation is not null)
+            {
+                return selfIndentation;
+            }
         }
 
         return GetExpectedIndentation(node);

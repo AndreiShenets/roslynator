@@ -3626,99 +3626,99 @@ public class RCS1271FixStructuralHonestyTests :
 //         );
 //     }
 //
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Chaining_single_lined()
-//     {
-//         await VerifyNoDiagnosticAsync(
-//             """
-//             using System.Linq;
-//
-//             int x = Enumerable.Range(1, 10).Where(i => i > 5).Select(i => i).Count();
-//             """,
-//             options: Options.WithCompilationOptions(
-//                 Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
-//             )
-//         );
-//     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Chaining_simple()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             using System;
-//             using System.Linq;
-//
-//             C c = new C();
-//
-//             [|[|c.M|][|([|i =>
-//                 i > 5|])|]|];
-//             """,
-//             """
-//             using System;
-//             using System.Linq;
-//
-//             C c = new C();
-//
-//             c.M(
-//                 i =>
-//                     i > 5
-//             );
-//             """,
-//             additionalFiles:
-//                 new (string source, string expectedSource)[]
-//                 {
-//                     (
-//                         source:
-//                         """
-//                         using System;
-//                         using System.Linq;
-//                         using System.Collections.Generic;
-//
-//                         public sealed class C
-//                         {
-//                             public C P => this;
-//                             public C this[int index] => this;
-//                             public IEnumerable<C> E => Enumerable.Empty<C>();
-//
-//                             public C M(Func<int, object> act = null) => this;
-//                         }
-//                         """,
-//                         expectedSource: null
-//                     )
-//                 },
-//             options: Options.WithCompilationOptions(
-//                 Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
-//             )
-//         );
-//     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Chaining()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             using System.Linq;
-//
-//             int x [|= [|[|[|[|[|[|[|[|Enumerable.Range(1, 10)
-//                 .Select|](a => a)|]
-//                 .Where|](b => b > 5)|]
-//                 .Select|](c => c)|].Count|]()|]|];
-//             """,
-//             """
-//             using System.Linq;
-//
-//             int x =
-//                 Enumerable.Range(1, 10)
-//                     .Select(a => a)
-//                     .Where(b => b > 5)
-//                     .Select(c => c).Count();
-//             """,
-//             options: Options.WithCompilationOptions(
-//                 Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
-//             )
-//         );
-//     }
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Chaining_single_lined()
+    {
+        await VerifyNoDiagnosticAsync(
+            """
+            using System.Linq;
+
+            int x = Enumerable.Range(1, 10).Where(i => i > 5).Select(i => i).Count();
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Chaining_simple()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System;
+            using System.Linq;
+
+            C c = new C();
+
+            [|c.M[|(i =>
+                i > 5)|]|];
+            """,
+            """
+            using System;
+            using System.Linq;
+
+            C c = new C();
+
+            c.M(
+                i =>
+                    i > 5
+            );
+            """,
+            additionalFiles:
+            new (string source, string expectedSource)[]
+            {
+                (
+                    source:
+                    """
+                    using System;
+                    using System.Linq;
+                    using System.Collections.Generic;
+
+                    public sealed class C
+                    {
+                        public C P => this;
+                        public C this[int index] => this;
+                        public IEnumerable<C> E => Enumerable.Empty<C>();
+
+                        public C M(Func<int, object> act = null) => this;
+                    }
+                    """,
+                    expectedSource: null
+                )
+            },
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Chaining()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System.Linq;
+
+            int x [|= [|[|[|[|[|[|Enumerable.Range(1, 10)
+                .Select(a => a)
+                    .Where|](b => b > 5)|]
+            .Select|](c => c)|].Count|]()|]|];
+            """,
+            """
+            using System.Linq;
+
+            int x =
+                Enumerable.Range(1, 10)
+                    .Select(a => a)
+                    .Where(b => b > 5)
+                    .Select(c => c).Count();
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
 //
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
 //     public async Task Chaining_top_level()
