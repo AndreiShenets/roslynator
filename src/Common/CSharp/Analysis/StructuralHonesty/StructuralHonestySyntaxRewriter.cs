@@ -25,7 +25,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
     private readonly Dictionary<SyntaxNode, string> _indentationCache = [];
 
     public bool DoAnalysisOnly { get; set; }
-    public bool ChangesApplied { get; set; }
+    public bool ChangesRequired { get; set; }
 
     public StructuralHonestySyntaxRewriter(
         SyntaxNode root,
@@ -49,7 +49,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             return null;
         }
 
-        if (ChangesApplied && DoAnalysisOnly)
+        if (ChangesRequired && DoAnalysisOnly)
         {
             // If at least one change was applied, then we should stop the analysis
             // and return the node as is.
@@ -61,7 +61,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
     public override SyntaxToken VisitToken(SyntaxToken token)
     {
-        if (ChangesApplied && DoAnalysisOnly)
+        if (ChangesRequired && DoAnalysisOnly)
         {
             // If at least one change was applied, then we should stop the analysis
             // and return the token as is.
@@ -74,6 +74,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
     public override SyntaxNode? VisitEqualsValueClause(EqualsValueClauseSyntax node)
     {
+        SyntaxTriviaList? equalsTokenNewLeadingTrivia = null;
+        SyntaxTriviaList? equalsTokenNewTrailingTrivia = null;
+        SyntaxTriviaList? valueNewLeadingTrivia = null;
+
         SyntaxTree syntaxTree = node.SyntaxTree;
 
         // The middle is multi-lined in the case of the trailing multi-line comments
@@ -89,49 +93,69 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         string expectedIndentation = GetExpectedIndentation(node);
         string valueExpectedIndentation = GetExpectedIndentation(node.Value);
 
+        _indentationCache[node] = expectedIndentation;
+
         bool nothingInFrontOfMiddle = CheckNothingButTriviaInFront(node.EqualsToken);
         if (nothingInFrontOfMiddle)
         {
-            SyntaxNodeOrToken? newEqualsToken = ReformatLeadingTrivia(node.EqualsToken, expectedIndentation);
-            if (newEqualsToken is not null)
+            equalsTokenNewLeadingTrivia = ReformatLeadingTrivia(node.EqualsToken, expectedIndentation);
+            if (equalsTokenNewLeadingTrivia is not null)
             {
-                node = node.WithEqualsToken(newEqualsToken.Value.AsToken());
-                ChangesApplied = true;
+                ChangesRequired = true;
             }
             valueExpectedIndentation += _singleIndentation;
         }
 
+        _indentationCache[node.Value] = valueExpectedIndentation;
+
         if (middleAndRightOnSameLine && (multilineInMiddle || multilineOnRight))
         {
-            node =
-                node.WithEqualsToken(
-                    node.EqualsToken.WithTrailingTrivia(
-                        node.EqualsToken.TrailingTrivia.AppendNewLine(_newLine)
-                    )
-                );
-            ChangesApplied = true;
+            equalsTokenNewTrailingTrivia = node.EqualsToken.TrailingTrivia.AppendNewLine(_newLine);
+            ChangesRequired = true;
             middleAndRightOnSameLine = false;
-
-            _indentationCache[node.Value] = valueExpectedIndentation;
         }
 
         if (!middleAndRightOnSameLine)
         {
             // Moved the right side above or was already on the next line, check that indentation is correct
-            SyntaxNodeOrToken? newValue = ReformatLeadingTrivia(node.Value, valueExpectedIndentation);
-            if (newValue is not null)
+            valueNewLeadingTrivia = ReformatLeadingTrivia(node.Value, valueExpectedIndentation);
+            if (valueNewLeadingTrivia is not null)
             {
-                node = node.WithValue((ExpressionSyntax)newValue.Value.AsNode()!);
-                _indentationCache[node.Value] = valueExpectedIndentation;
-                ChangesApplied = true;
+                ChangesRequired = true;
             }
         }
 
-        return base.VisitEqualsValueClause(node);
+        EqualsValueClauseSyntax? resultNode = (EqualsValueClauseSyntax?)base.VisitEqualsValueClause(node);
+        if (resultNode is null)
+        {
+            return null;
+        }
+
+        if (equalsTokenNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithEqualsToken(resultNode.EqualsToken.WithLeadingTrivia(equalsTokenNewLeadingTrivia));
+        }
+
+        if (equalsTokenNewTrailingTrivia is not null)
+        {
+            resultNode = resultNode.WithEqualsToken(resultNode.EqualsToken.WithTrailingTrivia(equalsTokenNewTrailingTrivia));
+        }
+
+        if (valueNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithValue(resultNode.Value.WithLeadingTrivia(valueNewLeadingTrivia));
+        }
+
+        return resultNode;
     }
 
     public override SyntaxNode? VisitAssignmentExpression(AssignmentExpressionSyntax node)
     {
+        SyntaxTriviaList? leftNewLeadingTrivia = null;
+        SyntaxTriviaList? operatorNewLeadingTrivia = null;
+        SyntaxTriviaList? operatorNewTrailingTrivia = null;
+        SyntaxTriviaList? rightNewLeadingTrivia = null;
+
         SyntaxTree syntaxTree = node.SyntaxTree;
 
         // The middle is multi-lined in the case of the trailing multi-line comments
@@ -156,13 +180,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         if (nothingInFrontOfLeft)
         {
-            SyntaxNodeOrToken? newLeft = ReformatLeadingTrivia(node.Left, expectedIndentationLeft);
-            if (newLeft is not null)
+            leftNewLeadingTrivia = ReformatLeadingTrivia(node.Left, expectedIndentationLeft);
+            if (leftNewLeadingTrivia is not null)
             {
-                node = node.WithLeft((ExpressionSyntax)newLeft.Value.AsNode()!);
-                _indentationCache[node] = expectedIndentationLeft;
-                _indentationCache[node.Left] = expectedIndentationLeft;
-                ChangesApplied = true;
+                ChangesRequired = true;
             }
         }
 
@@ -173,13 +194,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             expectedIndentationMiddle += _singleIndentation;
             expectedIndentationRight = expectedIndentationMiddle;
 
-            SyntaxNodeOrToken? newMiddle = ReformatLeadingTrivia(node.OperatorToken, expectedIndentationMiddle);
-            if (newMiddle is not null)
+            operatorNewLeadingTrivia = ReformatLeadingTrivia(node.OperatorToken, expectedIndentationMiddle);
+            if (operatorNewLeadingTrivia is not null)
             {
-                node = node.WithOperatorToken(newMiddle.Value.AsToken());
-                _indentationCache[node] = expectedIndentationLeft;
-                _indentationCache[node.Left] = expectedIndentationLeft;
-                ChangesApplied = true;
+                ChangesRequired = true;
             }
         }
 
@@ -192,17 +210,8 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         if (middleAndRightOnSameLine && (multilineInMiddle || multilineOnRight))
         {
-            node =
-                node.WithOperatorToken(
-                    node.OperatorToken.WithTrailingTrivia(
-                        node.OperatorToken.TrailingTrivia.AppendNewLine(_newLine)
-                    )
-                );
-            _indentationCache[node] = expectedIndentationLeft;
-            _indentationCache[node.Left] = expectedIndentationLeft;
-
-            ChangesApplied = true;
-
+            operatorNewTrailingTrivia = node.OperatorToken.TrailingTrivia.AppendNewLine(_newLine);
+            ChangesRequired = true;
             nothingInFrontOfRight = true;
         }
         else
@@ -212,22 +221,50 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         if (nothingInFrontOfRight)
         {
-            SyntaxNodeOrToken? newRight = ReformatLeadingTrivia(node.Right, expectedIndentationRight);
-            if (newRight is not null)
+            rightNewLeadingTrivia = ReformatLeadingTrivia(node.Right, expectedIndentationRight);
+            if (rightNewLeadingTrivia is not null)
             {
-                node = node.WithRight((ExpressionSyntax)newRight.Value.AsNode()!);
-                _indentationCache[node] = expectedIndentationLeft;
-                _indentationCache[node.Left] = expectedIndentationLeft;
-                _indentationCache[node.Right] = expectedIndentationRight;
-                ChangesApplied = true;
+                ChangesRequired = true;
             }
         }
 
-        return base.VisitAssignmentExpression(node);
+        AssignmentExpressionSyntax? resultNode = (AssignmentExpressionSyntax?)base.VisitAssignmentExpression(node);
+        if (resultNode is null)
+        {
+            return null;
+        }
+
+        if (leftNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithLeft(resultNode.Left.WithLeadingTrivia(leftNewLeadingTrivia));
+        }
+
+        if (operatorNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithOperatorToken(resultNode.OperatorToken.WithLeadingTrivia(operatorNewLeadingTrivia));
+        }
+
+        if (operatorNewTrailingTrivia is not null)
+        {
+            resultNode = resultNode.WithOperatorToken(resultNode.OperatorToken.WithTrailingTrivia(operatorNewTrailingTrivia));
+        }
+
+        if (rightNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithRight(resultNode.Right.WithLeadingTrivia(rightNewLeadingTrivia));
+        }
+
+        return resultNode;
     }
 
     public override SyntaxNode? VisitBinaryExpression(BinaryExpressionSyntax node)
     {
+        SyntaxTriviaList? leftNewLeadingTrivia = null;
+        SyntaxTriviaList? leftNewTrailingTrivia = null;
+        SyntaxTriviaList? operatorNewLeadingTrivia = null;
+        SyntaxTriviaList? operatorNewTrailingTrivia = null;
+        SyntaxTriviaList? rightNewLeadingTrivia = null;
+
         SyntaxTree syntaxTree = node.SyntaxTree;
 
         bool singleLineOnLeft = node.Left.IsSingleLine(cancellationToken: _cancellationToken);
@@ -253,13 +290,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         if (nothingInFrontOfLeft)
         {
-            SyntaxNodeOrToken? newLeft = ReformatLeadingTrivia(node.Left, expectedIndentation);
-            if (newLeft is not null)
+            leftNewLeadingTrivia = ReformatLeadingTrivia(node.Left, expectedIndentation);
+            if (leftNewLeadingTrivia is not null)
             {
-                node = node.WithLeft((ExpressionSyntax)newLeft.Value.AsNode()!);
-                _indentationCache[node] = expectedIndentation;
-                _indentationCache[node.Left] = expectedIndentation;
-                ChangesApplied = true;
+                ChangesRequired = true;
             }
         }
 
@@ -267,17 +301,8 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         if (leftAndMiddleOnSameLine && (multilineOnLeft || multilineInMiddle || multilineOnRight))
         {
-            node =
-                node.WithLeft(
-                    node.Left.WithTrailingTrivia(
-                        node.Left.GetTrailingTrivia().AppendNewLine(_newLine)
-                    )
-                );
-            _indentationCache[node] = expectedIndentation;
-            _indentationCache[node.Left] = expectedIndentation;
-
-            ChangesApplied = true;
-
+            leftNewTrailingTrivia = node.Left.GetTrailingTrivia().AppendNewLine(_newLine);
+            ChangesRequired = true;
             nothingInFrontOfMiddle = true;
         }
         else
@@ -287,13 +312,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         if (nothingInFrontOfMiddle)
         {
-            SyntaxNodeOrToken? newMiddle = ReformatLeadingTrivia(node.OperatorToken, expectedIndentation);
-            if (newMiddle is not null)
+            operatorNewLeadingTrivia = ReformatLeadingTrivia(node.OperatorToken, expectedIndentation);
+            if (operatorNewLeadingTrivia is not null)
             {
-                node = node.WithOperatorToken(newMiddle.Value.AsToken());
-                _indentationCache[node] = expectedIndentation;
-                _indentationCache[node.Left] = expectedIndentation;
-                ChangesApplied = true;
+                ChangesRequired = true;
             }
         }
 
@@ -302,32 +324,60 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         if (!middleAndRightOnSameLine && (multilineOnLeft || multilineInMiddle || multilineOnRight))
         {
             IEnumerable<SyntaxTrivia> leftTrailingTrivia =
-                node.GetTrailingTrivia()
+                (leftNewTrailingTrivia ?? node.Left.GetTrailingTrivia())
                     .Concat(node.OperatorToken.TrailingTrivia)
                     .Concat(node.Right.GetLeadingTrivia());
 
-            SyntaxTriviaList newLeftTrailingTrivia =
+            leftNewTrailingTrivia =
                 SyntaxFactory.TriviaList(leftTrailingTrivia)
                     .AppendNewLine(_newLine);
+            operatorNewTrailingTrivia = new SyntaxTriviaList(SyntaxFactory.Whitespace(" "));
+            rightNewLeadingTrivia = SyntaxTriviaList.Empty;
 
-            node =
-                node.Update(
-                    node.Left.WithTrailingTrivia(newLeftTrailingTrivia),
-                    node.OperatorToken.WithTrailingTrivia(SyntaxFactory.Whitespace(" ")),
-                    node.Right.WithoutLeadingTrivia()
-                );
-            _indentationCache[node] = expectedIndentation;
-            _indentationCache[node.Left] = expectedIndentation;
-            _indentationCache[node.Right] = expectedIndentation;
-
-            ChangesApplied = true;
+            ChangesRequired = true;
         }
 
-        return base.VisitBinaryExpression(node);
+        BinaryExpressionSyntax? resultNode = (BinaryExpressionSyntax?)base.VisitBinaryExpression(node);
+
+        if (resultNode is null)
+        {
+            return null;
+        }
+
+        if (leftNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithLeft(resultNode.Left.WithLeadingTrivia(leftNewLeadingTrivia));
+        }
+
+        if (leftNewTrailingTrivia is not null)
+        {
+            resultNode = resultNode.WithLeft(resultNode.Left.WithTrailingTrivia(leftNewTrailingTrivia));
+        }
+
+        if (operatorNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithOperatorToken(resultNode.OperatorToken.WithLeadingTrivia(operatorNewLeadingTrivia));
+        }
+
+        if (operatorNewTrailingTrivia is not null)
+        {
+            resultNode = resultNode.WithOperatorToken(resultNode.OperatorToken.WithTrailingTrivia(operatorNewTrailingTrivia));
+        }
+
+        if (rightNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithRight(resultNode.Right.WithLeadingTrivia(rightNewLeadingTrivia));
+        }
+
+        return resultNode;
     }
 
     public override SyntaxNode? VisitParenthesizedExpression(ParenthesizedExpressionSyntax node)
     {
+        SyntaxTriviaList? openParenNewLeadingTrivia = null;
+        SyntaxTriviaList? expressionNewTrailingTrivia = null;
+        SyntaxTriviaList? closeParenNewLeadingTrivia = null;
+
         string expectedIndentation = GetSelfIndentation(node) ?? GetParentIndentation(node) ?? _rootNodeIndentation;
         _indentationCache[node] = expectedIndentation;
 
@@ -340,43 +390,48 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
             _indentationCache[node] = expectedIndentation;
 
-            SyntaxNodeOrToken? newNode = ReformatLeadingTrivia(node.OpenParenToken, expectedIndentation);
-            if (newNode is not null)
+            openParenNewLeadingTrivia = ReformatLeadingTrivia(node.OpenParenToken, expectedIndentation);
+            if (openParenNewLeadingTrivia is not null)
             {
-                node = node.WithOpenParenToken(newNode.Value.AsToken());
-                _indentationCache[node] = expectedIndentation;
-                ChangesApplied = true;
+                ChangesRequired = true;
             }
-        }
-
-        if (CheckOnTheSameLine(node.SyntaxTree, node.OpenParenToken.GetTrimmedFullSpan(), node.CloseParenToken.FullSpan))
-        {
-            return base.VisitParenthesizedExpression(node);
         }
 
         // Parents are on different lines, but the closing paren is not on its own line, so move it to the next line
-        if (!CheckNothingButTriviaInFront(node.CloseParenToken))
+        if (!CheckOnTheSameLine(node.SyntaxTree, node.OpenParenToken.GetTrimmedFullSpan(), node.CloseParenToken.FullSpan)
+            && !CheckNothingButTriviaInFront(node.CloseParenToken)
+        )
         {
-            node =
-                node.WithExpression(
-                    node.Expression.WithTrailingTrivia(
-                        node.Expression.GetTrailingTrivia().AppendNewLine(_newLine)
-                    )
-                );
+            expressionNewTrailingTrivia = node.Expression.GetTrailingTrivia().AppendNewLine(_newLine);
 
-            SyntaxNodeOrToken? newNode =
+            closeParenNewLeadingTrivia =
                 ReformatLeadingTrivia(node.CloseParenToken, expectedIndentation + _singleIndentation, expectedIndentation);
-            if (newNode is not null)
-            {
-                node = node.WithCloseParenToken(newNode.Value.AsToken());
-            }
 
-            _indentationCache[node] = expectedIndentation;
-
-            ChangesApplied = true;
+            ChangesRequired = true;
         }
 
-        return base.VisitParenthesizedExpression(node);
+        ParenthesizedExpressionSyntax? resultNode = (ParenthesizedExpressionSyntax?)base.VisitParenthesizedExpression(node);
+        if (resultNode is null)
+        {
+            return null;
+        }
+
+        if (openParenNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithOpenParenToken(resultNode.OpenParenToken.WithLeadingTrivia(openParenNewLeadingTrivia));
+        }
+
+        if (expressionNewTrailingTrivia is not null)
+        {
+            resultNode = resultNode.WithExpression(resultNode.Expression.WithTrailingTrivia(expressionNewTrailingTrivia));
+        }
+
+        if (closeParenNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithCloseParenToken(resultNode.CloseParenToken.WithLeadingTrivia(closeParenNewLeadingTrivia));
+        }
+
+        return resultNode;
     }
 
     public override SyntaxNode? VisitInvocationExpression(InvocationExpressionSyntax node)
@@ -387,6 +442,8 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             return base.VisitInvocationExpression(node);
         }
 
+        SyntaxTriviaList? nodeNewLeadingTrivia = null;
+
         bool nothingInFrontOfNode = CheckNothingButTriviaInFront(node);
 
         string expectedIndentation = GetExpectedIndentation(node);
@@ -396,17 +453,25 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             _indentationCache[node] = expectedIndentation;
             _indentationCache[node.ArgumentList] = expectedIndentation;
 
-            SyntaxNodeOrToken? newNode = ReformatLeadingTrivia(node, expectedIndentation);
-            if (newNode is not null)
+            nodeNewLeadingTrivia = ReformatLeadingTrivia(node, expectedIndentation);
+            if (nodeNewLeadingTrivia is not null)
             {
-                node = (InvocationExpressionSyntax)newNode.Value.AsNode()!;
-                _indentationCache[node] = expectedIndentation;
-                _indentationCache[node.ArgumentList] = expectedIndentation;
-                ChangesApplied = true;
+                ChangesRequired = true;
             }
         }
 
-        return base.VisitInvocationExpression(node);
+        InvocationExpressionSyntax? resultNode = (InvocationExpressionSyntax?)base.VisitInvocationExpression(node);
+        if (resultNode is null)
+        {
+            return null;
+        }
+
+        if (nodeNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithLeadingTrivia(nodeNewLeadingTrivia);
+        }
+
+        return resultNode;
     }
 
     public override SyntaxNode? VisitMemberAccessExpression(MemberAccessExpressionSyntax node)
@@ -416,6 +481,11 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         {
             return base.VisitMemberAccessExpression(node);
         }
+
+        SyntaxTriviaList? operatorNewLeadingTrivia = null;
+        SyntaxTriviaList? operatorNewTrailingTrivia = null;
+        SyntaxTriviaList? expressionNewTrailingTrivia = null;
+        SyntaxTriviaList? nameNewLeadingTrivia = null;
 
         SyntaxTree syntaxTree = node.SyntaxTree;
 
@@ -475,20 +545,8 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             && (multilinePartsBefore || dotsBefore > 1 || dotsBeforeOnNewLine > 0)
         )
         {
-            node =
-                node.WithExpression(
-                    node.Expression.WithTrailingTrivia(
-                        node.Expression.GetTrailingTrivia().AppendNewLine(_newLine)
-                    )
-                );
-            _indentationCache[node] = expectedIndentationMiddle;
-            if (expectedIndentationLeft is not null)
-            {
-                _indentationCache[node.Expression] = expectedIndentationLeft;
-            }
-
-            ChangesApplied = true;
-
+            expressionNewTrailingTrivia = node.Expression.GetTrailingTrivia().AppendNewLine(_newLine);
+            ChangesRequired = true;
             nothingInFrontOfMiddle = true;
         }
         else
@@ -498,47 +556,59 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         if (nothingInFrontOfMiddle)
         {
-            SyntaxNodeOrToken? newMiddle = ReformatLeadingTrivia(node.OperatorToken, expectedIndentationMiddle);
-            if (newMiddle is not null)
+            operatorNewLeadingTrivia = ReformatLeadingTrivia(node.OperatorToken, expectedIndentationMiddle);
+            if (operatorNewLeadingTrivia is not null)
             {
-                node = node.WithOperatorToken(newMiddle.Value.AsToken());
-                _indentationCache[node] = expectedIndentationMiddle;
-                if (expectedIndentationLeft is not null)
-                {
-                    _indentationCache[node.Expression] = expectedIndentationLeft;
-                }
-                ChangesApplied = true;
+                ChangesRequired = true;
             }
         }
 
         if (!middleAndRightOnSameLine && (multilineOnLeft || multilineInMiddle || multilineOnRight))
         {
             IEnumerable<SyntaxTrivia> leftTrailingTrivia =
-                node.GetTrailingTrivia()
+                (expressionNewTrailingTrivia ?? node.Expression.GetTrailingTrivia())
                     .Concat(node.OperatorToken.TrailingTrivia)
                     .Concat(node.Name.GetLeadingTrivia());
 
-            SyntaxTriviaList newLeftTrailingTrivia =
+            expressionNewTrailingTrivia =
                 SyntaxFactory.TriviaList(leftTrailingTrivia)
                     .AppendNewLine(_newLine);
 
-            node =
-                node.Update(
-                    node.Expression.WithTrailingTrivia(newLeftTrailingTrivia),
-                    node.OperatorToken.WithoutTrailingTrivia(),
-                    node.Name.WithoutLeadingTrivia()
-                );
-            _indentationCache[node] = expectedIndentationMiddle;
-            if (expectedIndentationLeft is not null)
-            {
-                _indentationCache[node.Expression] = expectedIndentationLeft;
-            }
+            operatorNewTrailingTrivia = SyntaxTriviaList.Empty;
+            nameNewLeadingTrivia = SyntaxTriviaList.Empty;
+
             _indentationCache[fullRightPart] = expectedIndentationMiddle;
 
-            ChangesApplied = true;
+            ChangesRequired = true;
         }
 
-        return base.VisitMemberAccessExpression(node);
+        MemberAccessExpressionSyntax? resultNode = (MemberAccessExpressionSyntax?)base.VisitMemberAccessExpression(node);
+        if (resultNode is null)
+        {
+            return null;
+        }
+
+        if (operatorNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithOperatorToken(resultNode.OperatorToken.WithLeadingTrivia(operatorNewLeadingTrivia));
+        }
+
+        if (operatorNewTrailingTrivia is not null)
+        {
+            resultNode = resultNode.WithOperatorToken(resultNode.OperatorToken.WithTrailingTrivia(operatorNewTrailingTrivia));
+        }
+
+        if (expressionNewTrailingTrivia is not null)
+        {
+            resultNode = resultNode.WithExpression(resultNode.Expression.WithTrailingTrivia(expressionNewTrailingTrivia));
+        }
+
+        if (nameNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithName(resultNode.Name.WithLeadingTrivia(nameNewLeadingTrivia));
+        }
+
+        return resultNode;
     }
 
     private (bool MultilinePartsBefore, int DotsBefore, int DotsBeforeOnNewLine, int DotsAfter)
@@ -679,103 +749,121 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         string expectedIndentation = GetSelfIndentation(node) ?? GetParentIndentation(node) ?? _rootNodeIndentation;
         _indentationCache[node] = expectedIndentation;
 
+        SyntaxTriviaList? openParenNewLeadingTrivia = null;
+        SyntaxTriviaList? openParenNewTrailingTrivia = null;
+        SyntaxTriviaList? closeParenNewLeadingTrivia = null;
+        List<(SyntaxToken Token, SyntaxTriviaList NewTrailingTrivia)> nodeTokensToReplace = [];
+        SyntaxTriviaList? lastArgumentNewTrailingTrivia = null;
+
         if (CheckNothingButTriviaInFront(node.OpenParenToken))
         {
             if (!ReferenceEquals(_root, node))
             {
                 expectedIndentation += _singleIndentation;
+                _indentationCache[node] = expectedIndentation;
             }
 
-            _indentationCache[node] = expectedIndentation;
-
-            SyntaxNodeOrToken? newNode = ReformatLeadingTrivia(node.OpenParenToken, expectedIndentation);
-            if (newNode is not null)
+            openParenNewLeadingTrivia = ReformatLeadingTrivia(node.OpenParenToken, expectedIndentation);
+            if (openParenNewLeadingTrivia is not null)
             {
-                node = node.WithOpenParenToken(newNode.Value.AsToken());
-                _indentationCache[node] = expectedIndentation;
-                ChangesApplied = true;
+                ChangesRequired = true;
             }
         }
 
         TextSpan trimmedOpenParentTokenFullSpan = node.OpenParenToken.GetTrimmedFullSpan();
-        if (CheckOnTheSameLine(node.SyntaxTree, trimmedOpenParentTokenFullSpan, node.CloseParenToken.FullSpan))
-        {
-            return base.VisitArgumentList(node);
-        }
-
-        if (node.Arguments.Any())
-        {
-            if (CheckOnTheSameLine(node.SyntaxTree, trimmedOpenParentTokenFullSpan, node.Arguments[0].FullSpan))
-            {
-                node =
-                    node.WithOpenParenToken(
-                        node.OpenParenToken.WithTrailingTrivia(
-                            node.OpenParenToken.TrailingTrivia.AppendNewLine(_newLine)
-                        )
-                    );
-                _indentationCache[node] = expectedIndentation;
-                ChangesApplied = true;
-
-                // The indentation of the argument is done in VisitArgument
-            }
-
-            IEnumerable<SyntaxNodeOrToken> commaTokens = node.ChildNodesAndTokens().Where(n => n.IsKind(SyntaxKind.CommaToken));
-            foreach (SyntaxNodeOrToken commaToken in commaTokens)
-            {
-                SyntaxToken token = commaToken.AsToken();
-                SyntaxTriviaList trailingTrivia = token.TrailingTrivia;
-                if (!trailingTrivia.HasEndOfLineTriviaAtTheEnd())
-                {
-                    node = node.ReplaceToken(token, token.WithTrailingTrivia(trailingTrivia.AppendNewLine(_newLine)));
-                    _indentationCache[node] = expectedIndentation;
-                    ChangesApplied = true;
-                }
-            }
-        }
-
-        // Parents are on different lines, but the closing paren is not on its own line, so move it to the next line
-        if (!CheckNothingButTriviaInFront(node.CloseParenToken))
+        if (!CheckOnTheSameLine(node.SyntaxTree, trimmedOpenParentTokenFullSpan, node.CloseParenToken.FullSpan))
         {
             if (node.Arguments.Any())
             {
-                ArgumentSyntax lastArgument = node.Arguments.Last();
+                if (CheckOnTheSameLine(node.SyntaxTree, trimmedOpenParentTokenFullSpan, node.Arguments[0].FullSpan))
+                {
+                    openParenNewTrailingTrivia = node.OpenParenToken.TrailingTrivia.AppendNewLine(_newLine);
+                    ChangesRequired = true;
+                    // The indentation of the argument is done in VisitArgument
+                }
 
-                ArgumentSyntax newLastArgument =
-                    lastArgument.WithTrailingTrivia(
-                        lastArgument.GetTrailingTrivia().AppendNewLine(_newLine)
-                    );
-
-                node =
-                    node.WithArguments(
-                        node.Arguments.Replace(lastArgument, newLastArgument)
-                    );
+                IEnumerable<SyntaxNodeOrToken> commaTokens = node.ChildNodesAndTokens().Where(n => n.IsKind(SyntaxKind.CommaToken));
+                foreach (SyntaxNodeOrToken commaToken in commaTokens)
+                {
+                    SyntaxToken token = commaToken.AsToken();
+                    SyntaxTriviaList trailingTrivia = token.TrailingTrivia;
+                    if (!trailingTrivia.HasEndOfLineTriviaAtTheEnd())
+                    {
+                        nodeTokensToReplace.Add((token, trailingTrivia.AppendNewLine(_newLine)));
+                        ChangesRequired = true;
+                    }
+                }
             }
-            else
+
+            // Parents are on different lines, but the closing paren is not on its own line, so move it to the next line
+            if (!CheckNothingButTriviaInFront(node.CloseParenToken))
             {
-                // If parens are on the different lines but there are no arguments,
-                // then nothing should be in front apart from multiline comments attached to the open paren
-                node =
-                    node.WithOpenParenToken(
-                        node.OpenParenToken.WithTrailingTrivia(
-                            node.OpenParenToken.TrailingTrivia.AppendNewLine(_newLine)
-                        )
-                    );
+                if (node.Arguments.Any())
+                {
+                    ArgumentSyntax lastArgument = node.Arguments.Last();
+
+                    lastArgumentNewTrailingTrivia = lastArgument.GetTrailingTrivia().AppendNewLine(_newLine);
+                }
+                else
+                {
+                    // If parens are on the different lines but there are no arguments,
+                    // then nothing should be in front apart from multiline comments attached to the open paren
+                    openParenNewTrailingTrivia =
+                        (openParenNewTrailingTrivia ?? node.OpenParenToken.TrailingTrivia).AppendNewLine(_newLine);
+                }
+
+                ChangesRequired = true;
             }
 
-            _indentationCache[node] = expectedIndentation;
-            ChangesApplied = true;
+            closeParenNewLeadingTrivia =
+                ReformatLeadingTrivia(node.CloseParenToken, expectedIndentation + _singleIndentation, expectedIndentation);
+            if (closeParenNewLeadingTrivia is not null)
+            {
+                ChangesRequired = true;
+            }
         }
 
-        SyntaxNodeOrToken? newToken =
-            ReformatLeadingTrivia(node.CloseParenToken, expectedIndentation + _singleIndentation, expectedIndentation);
-        if (newToken is not null)
+        ArgumentListSyntax? resultNode = (ArgumentListSyntax?)base.VisitArgumentList(node);
+        if (resultNode is null)
         {
-            node = node.WithCloseParenToken(newToken.Value.AsToken());
-            _indentationCache[node] = expectedIndentation;
-            ChangesApplied = true;
+            return null;
         }
 
-        return base.VisitArgumentList(node);
+        if (openParenNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithOpenParenToken(resultNode.OpenParenToken.WithLeadingTrivia(openParenNewLeadingTrivia));
+        }
+
+        if (openParenNewTrailingTrivia is not null)
+        {
+            resultNode = resultNode.WithOpenParenToken(resultNode.OpenParenToken.WithTrailingTrivia(openParenNewTrailingTrivia));
+        }
+
+        if (closeParenNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithCloseParenToken(resultNode.CloseParenToken.WithLeadingTrivia(closeParenNewLeadingTrivia));
+        }
+
+        if (lastArgumentNewTrailingTrivia is not null)
+        {
+            ArgumentSyntax lastArgument = resultNode.Arguments.Last();
+
+            resultNode =
+                resultNode.WithArguments(
+                    resultNode.Arguments.Replace(
+                        lastArgument,
+                        lastArgument.WithTrailingTrivia(lastArgumentNewTrailingTrivia)
+                    )
+                );
+        }
+
+        for (int index = 0; index < nodeTokensToReplace.Count; index++)
+        {
+            (SyntaxToken oldToken, SyntaxTriviaList newTrailingTrivia) = nodeTokensToReplace[index];
+            resultNode = resultNode.ReplaceToken(oldToken, oldToken.WithTrailingTrivia(newTrailingTrivia));
+        }
+
+        return resultNode;
     }
 
     public override SyntaxNode? VisitArgument(ArgumentSyntax node)
@@ -784,84 +872,96 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         _indentationCache[node] = expectedIndentation;
         _indentationCache[node.Expression] = expectedIndentation;
 
+        SyntaxTriviaList? newLeadingTrivia = null;
+        SyntaxTriviaList? nameColonNewTrailingTrivia = null;
+        SyntaxTriviaList? expressionNewLeadingTrivia = null;
+
         bool nothingInFrontOfNode = CheckNothingButTriviaInFront(node);
 
         if (nothingInFrontOfNode)
         {
-            SyntaxNodeOrToken? newNode = ReformatLeadingTrivia(node, expectedIndentation);
-            if (newNode is not null)
+            newLeadingTrivia = ReformatLeadingTrivia(node, expectedIndentation);
+            if (newLeadingTrivia is not null)
             {
-                node = node.WithLeadingTrivia(newNode.Value.GetLeadingTrivia());
-                _indentationCache[node] = expectedIndentation;
-                _indentationCache[node.Expression] = expectedIndentation;
-                ChangesApplied = true;
+                ChangesRequired = true;
             }
         }
 
-        if (node.IsSingleLine(cancellationToken: _cancellationToken))
+        if (!node.IsSingleLine(cancellationToken: _cancellationToken))
         {
-            return base.VisitArgument(node);
-        }
-
-        if (node.NameColon is not null)
-        {
-            bool leftAndRightOnSameLine = CheckOnTheSameLine(node.SyntaxTree, node.NameColon.GetTrimmedFullSpan(), node.Expression.FullSpan);
-            bool leftOnSingleLine = node.NameColon.IsSingleLine(cancellationToken: _cancellationToken);
-            bool leftMultiLine = !leftOnSingleLine;
-            bool rightOnSingleLine = node.Expression.IsSingleLine(cancellationToken: _cancellationToken);
-            bool rightMultiLine = !rightOnSingleLine;
-
-            bool nothingInFrontOfRight;
-
-            if (leftAndRightOnSameLine && (leftMultiLine || rightMultiLine))
+            if (node.NameColon is not null)
             {
-                NameColonSyntax newEqualsToken =
-                    node.NameColon.WithTrailingTrivia(
-                        node.NameColon.GetTrailingTrivia().AppendNewLine(_newLine)
-                    );
-                node = node.WithNameColon(newEqualsToken);
-                _indentationCache[node] = expectedIndentation;
-                _indentationCache[node.Expression] = expectedIndentation;
-                ChangesApplied = true;
-                nothingInFrontOfRight = true;
-            }
-            else
-            {
-                nothingInFrontOfRight = CheckNothingButTriviaInFront(node.Expression);
-            }
+                bool leftAndRightOnSameLine = CheckOnTheSameLine(node.SyntaxTree, node.NameColon.GetTrimmedFullSpan(), node.Expression.FullSpan);
+                bool leftOnSingleLine = node.NameColon.IsSingleLine(cancellationToken: _cancellationToken);
+                bool leftMultiLine = !leftOnSingleLine;
+                bool rightOnSingleLine = node.Expression.IsSingleLine(cancellationToken: _cancellationToken);
+                bool rightMultiLine = !rightOnSingleLine;
 
-            if (nothingInFrontOfRight)
-            {
-                string rightExpectedIndentation = expectedIndentation + _singleIndentation;
-                SyntaxNodeOrToken? newRight = ReformatLeadingTrivia(node.Expression, rightExpectedIndentation);
-                if (newRight is not null)
+                bool nothingInFrontOfRight;
+
+                if (leftAndRightOnSameLine && (leftMultiLine || rightMultiLine))
                 {
-                    node = node.WithExpression((ExpressionSyntax)newRight.Value.AsNode()!);
-                    _indentationCache[node] = expectedIndentation;
-                    _indentationCache[node.Expression] = rightExpectedIndentation;
-                    ChangesApplied = true;
+                    nameColonNewTrailingTrivia = node.NameColon.GetTrailingTrivia().AppendNewLine(_newLine);
+                    ChangesRequired = true;
+                    nothingInFrontOfRight = true;
+                }
+                else
+                {
+                    nothingInFrontOfRight = CheckNothingButTriviaInFront(node.Expression);
+                }
+
+                if (nothingInFrontOfRight)
+                {
+                    string rightExpectedIndentation = expectedIndentation + _singleIndentation;
+                    expressionNewLeadingTrivia = ReformatLeadingTrivia(node.Expression, rightExpectedIndentation);
+                    if (expressionNewLeadingTrivia is not null)
+                    {
+                        ChangesRequired = true;
+                    }
                 }
             }
         }
 
-        return base.VisitArgument(node);
+        ArgumentSyntax? resultNode = (ArgumentSyntax?)base.VisitArgument(node);
+        if (resultNode is null)
+        {
+            return null;
+        }
+
+        if (newLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithLeadingTrivia(newLeadingTrivia);
+        }
+
+        if (nameColonNewTrailingTrivia is not null && resultNode.NameColon is not null)
+        {
+            resultNode = resultNode.WithNameColon(resultNode.NameColon.WithTrailingTrivia(nameColonNewTrailingTrivia));
+        }
+
+        if (expressionNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithExpression(resultNode.Expression.WithLeadingTrivia(expressionNewLeadingTrivia));
+        }
+
+        return resultNode;
     }
 
     public override SyntaxNode? VisitAwaitExpression(AwaitExpressionSyntax node)
     {
         bool nothingInFrontOfAwait = CheckNothingButTriviaInFront(node);
 
+        SyntaxTriviaList? nodeNewLeadingTrivia = null;
+        SyntaxTriviaList? expressionNewLeadingTrivia = null;
+
         if (nothingInFrontOfAwait)
         {
             string expectedIndentation = GetExpectedIndentation(node);
             _indentationCache[node] = expectedIndentation;
 
-            SyntaxNodeOrToken? newNode = ReformatLeadingTrivia(node, expectedIndentation);
-            if (newNode is not null)
+            nodeNewLeadingTrivia = ReformatLeadingTrivia(node, expectedIndentation);
+            if (nodeNewLeadingTrivia is not null)
             {
-                node = (AwaitExpressionSyntax)newNode.Value.AsNode()!;
-                _indentationCache[node] = expectedIndentation;
-                ChangesApplied = true;
+                ChangesRequired = true;
             }
         }
 
@@ -872,21 +972,39 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             string expectedExpressionIndentation = expectedIndentation + _singleIndentation;
             _indentationCache[node.Expression] = expectedExpressionIndentation;
 
-            SyntaxNodeOrToken? newNode = ReformatLeadingTrivia(node.Expression, expectedExpressionIndentation);
-            if (newNode is not null)
+            expressionNewLeadingTrivia = ReformatLeadingTrivia(node.Expression, expectedExpressionIndentation);
+            if (expressionNewLeadingTrivia is not null)
             {
-                node = node.WithExpression((ExpressionSyntax)newNode.Value.AsNode()!);
-                _indentationCache[node] = expectedIndentation;
-                _indentationCache[node.Expression] = expectedExpressionIndentation;
-                ChangesApplied = true;
+                ChangesRequired = true;
             }
         }
 
-        return base.VisitAwaitExpression(node);
+        AwaitExpressionSyntax? resultNode = (AwaitExpressionSyntax?)base.VisitAwaitExpression(node);
+        if (resultNode is null)
+        {
+            return null;
+        }
+
+        if (nodeNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithAwaitKeyword(resultNode.AwaitKeyword.WithLeadingTrivia(nodeNewLeadingTrivia));
+        }
+
+        if (expressionNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithExpression(resultNode.Expression.WithLeadingTrivia(expressionNewLeadingTrivia));
+        }
+
+        return resultNode;
     }
 
     public override SyntaxNode? VisitSimpleLambdaExpression(SimpleLambdaExpressionSyntax node)
     {
+        SyntaxTriviaList? nodeNewLeadingTrivia = null;
+        SyntaxTriviaList? arrowTokenNewLeadingTrivia = null;
+        SyntaxTriviaList? arrowTokenNewTrailingTrivia = null;
+        SyntaxTriviaList? bodyNewLeadingTrivia = null;
+
         SyntaxTree syntaxTree = node.SyntaxTree;
 
         SyntaxToken firstToken = node.GetFirstToken();
@@ -915,12 +1033,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         if (nothingInFrontOfLeft)
         {
-            SyntaxNodeOrToken? newLeft = ReformatLeadingTrivia(node, expectedIndentationLeft);
-            if (newLeft is not null)
+            nodeNewLeadingTrivia = ReformatLeadingTrivia(node, expectedIndentationLeft);
+            if (nodeNewLeadingTrivia is not null)
             {
-                node = (SimpleLambdaExpressionSyntax)newLeft.Value.AsNode()!;
-                _indentationCache[node] = expectedIndentationLeft;
-                ChangesApplied = true;
+                ChangesRequired = true;
             }
         }
 
@@ -931,12 +1047,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             expectedIndentationMiddle += _singleIndentation;
             expectedIndentationRight += _singleIndentation;
 
-            SyntaxNodeOrToken? newMiddle = ReformatLeadingTrivia(node.ArrowToken, expectedIndentationMiddle);
-            if (newMiddle is not null)
+            arrowTokenNewLeadingTrivia = ReformatLeadingTrivia(node.ArrowToken, expectedIndentationMiddle);
+            if (arrowTokenNewLeadingTrivia is not null)
             {
-                node = node.WithArrowToken(newMiddle.Value.AsToken());
-                _indentationCache[node] = expectedIndentationLeft;
-                ChangesApplied = true;
+                ChangesRequired = true;
             }
         }
 
@@ -949,17 +1063,9 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         if (middleAndRightOnSameLine && (multilineOnLeft || multilineInMiddle || multilineOnRight))
         {
-            node =
-                node.WithArrowToken(
-                    node.ArrowToken.WithTrailingTrivia(
-                        node.ArrowToken.TrailingTrivia.AppendNewLine(_newLine)
-                    )
-                );
+            arrowTokenNewTrailingTrivia = node.ArrowToken.TrailingTrivia.AppendNewLine(_newLine);
 
-            _indentationCache[node] = expectedIndentationLeft;
-            _indentationCache[node.Body] = expectedIndentationRight;
-
-            ChangesApplied = true;
+            ChangesRequired = true;
 
             nothingInFrontOfRight = true;
         }
@@ -970,21 +1076,49 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         if (nothingInFrontOfRight)
         {
-            SyntaxNodeOrToken? newRight = ReformatLeadingTrivia(node.Body, expectedIndentationRight);
-            if (newRight is not null)
+            bodyNewLeadingTrivia = ReformatLeadingTrivia(node.Body, expectedIndentationRight);
+            if (bodyNewLeadingTrivia is not null)
             {
-                node = node.WithBody((CSharpSyntaxNode)newRight.Value.AsNode()!);
-                _indentationCache[node] = expectedIndentationLeft;
-                _indentationCache[node.Body] = expectedIndentationRight;
-                ChangesApplied = true;
+                ChangesRequired = true;
             }
         }
 
-        return base.VisitSimpleLambdaExpression(node);
+        SimpleLambdaExpressionSyntax? resultNode = (SimpleLambdaExpressionSyntax?)base.VisitSimpleLambdaExpression(node);
+        if (resultNode is null)
+        {
+            return null;
+        }
+
+        if (nodeNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithLeadingTrivia(nodeNewLeadingTrivia);
+        }
+
+        if (arrowTokenNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithArrowToken(resultNode.ArrowToken.WithLeadingTrivia(arrowTokenNewLeadingTrivia));
+        }
+
+        if (arrowTokenNewTrailingTrivia is not null)
+        {
+            resultNode = resultNode.WithArrowToken(resultNode.ArrowToken.WithTrailingTrivia(arrowTokenNewTrailingTrivia));
+        }
+
+        if (bodyNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithBody(resultNode.Body.WithLeadingTrivia(bodyNewLeadingTrivia));
+        }
+
+        return resultNode;
     }
 
     public override SyntaxNode? VisitParenthesizedLambdaExpression(ParenthesizedLambdaExpressionSyntax node)
     {
+        SyntaxTriviaList? nodeNewLeadingTrivia = null;
+        SyntaxTriviaList? arrowTokenNewLeadingTrivia = null;
+        SyntaxTriviaList? arrowTokenNewTrailingTrivia = null;
+        SyntaxTriviaList? bodyNewLeadingTrivia = null;
+
         SyntaxTree syntaxTree = node.SyntaxTree;
 
         SyntaxToken firstToken = node.GetFirstToken();
@@ -1013,12 +1147,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         if (nothingInFrontOfLeft)
         {
-            SyntaxNodeOrToken? newLeft = ReformatLeadingTrivia(node, expectedIndentationLeft);
-            if (newLeft is not null)
+            nodeNewLeadingTrivia = ReformatLeadingTrivia(node, expectedIndentationLeft);
+            if (nodeNewLeadingTrivia is not null)
             {
-                node = (ParenthesizedLambdaExpressionSyntax)newLeft.Value.AsNode()!;
-                _indentationCache[node] = expectedIndentationLeft;
-                ChangesApplied = true;
+                ChangesRequired = true;
             }
         }
 
@@ -1029,12 +1161,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             expectedIndentationMiddle += _singleIndentation;
             expectedIndentationRight += _singleIndentation;
 
-            SyntaxNodeOrToken? newMiddle = ReformatLeadingTrivia(node.ArrowToken, expectedIndentationMiddle);
-            if (newMiddle is not null)
+            arrowTokenNewLeadingTrivia = ReformatLeadingTrivia(node.ArrowToken, expectedIndentationMiddle);
+            if (arrowTokenNewLeadingTrivia is not null)
             {
-                node = node.WithArrowToken(newMiddle.Value.AsToken());
-                _indentationCache[node] = expectedIndentationLeft;
-                ChangesApplied = true;
+                ChangesRequired = true;
             }
         }
 
@@ -1048,17 +1178,9 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         if (middleAndRightOnSameLine && (multilineOnLeft || multilineInMiddle || multilineOnRight))
         {
-            node =
-                node.WithArrowToken(
-                    node.ArrowToken.WithTrailingTrivia(
-                        node.ArrowToken.TrailingTrivia.AppendNewLine(_newLine)
-                    )
-                );
+            arrowTokenNewTrailingTrivia = node.ArrowToken.TrailingTrivia.AppendNewLine(_newLine);
 
-            _indentationCache[node] = expectedIndentationLeft;
-            _indentationCache[node.Body] = expectedIndentationRight;
-
-            ChangesApplied = true;
+            ChangesRequired = true;
 
             nothingInFrontOfRight = true;
         }
@@ -1069,125 +1191,166 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         if (nothingInFrontOfRight)
         {
-            SyntaxNodeOrToken? newRight = ReformatLeadingTrivia(node.Body, expectedIndentationRight);
-            if (newRight is not null)
+            bodyNewLeadingTrivia = ReformatLeadingTrivia(node.Body, expectedIndentationRight);
+            if (bodyNewLeadingTrivia is not null)
             {
-                node = node.WithBody((CSharpSyntaxNode)newRight.Value.AsNode()!);
-                _indentationCache[node] = expectedIndentationLeft;
-                _indentationCache[node.Body] = expectedIndentationRight;
-                ChangesApplied = true;
+                ChangesRequired = true;
             }
         }
 
-        return base.VisitParenthesizedLambdaExpression(node);
+        ParenthesizedLambdaExpressionSyntax? resultNode =
+            (ParenthesizedLambdaExpressionSyntax?)base.VisitParenthesizedLambdaExpression(node);
+        if (resultNode is null)
+        {
+            return null;
+        }
+
+        if (nodeNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithLeadingTrivia(nodeNewLeadingTrivia);
+        }
+
+        if (arrowTokenNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithArrowToken(resultNode.ArrowToken.WithLeadingTrivia(arrowTokenNewLeadingTrivia));
+        }
+
+        if (arrowTokenNewTrailingTrivia is not null)
+        {
+            resultNode = resultNode.WithArrowToken(resultNode.ArrowToken.WithTrailingTrivia(arrowTokenNewTrailingTrivia));
+        }
+
+        if (bodyNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithBody(resultNode.Body.WithLeadingTrivia(bodyNewLeadingTrivia));
+        }
+
+        return resultNode;
     }
 
     public override SyntaxNode? VisitBlock(BlockSyntax node)
     {
+        SyntaxTriviaList? openBraceNewLeadingTrivia = null;
+        SyntaxTriviaList? openBraceNewTrailingTrivia = null;
+        List<(SyntaxNodeOrToken Element, SyntaxTriviaList NewLeadingTrivia)> replacements = [];
+        SyntaxTriviaList? lastStatementNewTrailingTrivia = null;
+        SyntaxTriviaList? closeBraceNewLeadingTrivia = null;
+
         string expectedIndentation = GetSelfIndentation(node) ?? GetParentIndentation(node) ?? _rootNodeIndentation;
         _indentationCache[node] = expectedIndentation;
 
         if (CheckNothingButTriviaInFront(node.OpenBraceToken))
         {
-            SyntaxNodeOrToken? newNode = ReformatLeadingTrivia(node.OpenBraceToken, expectedIndentation);
-            if (newNode is not null)
+            openBraceNewLeadingTrivia = ReformatLeadingTrivia(node.OpenBraceToken, expectedIndentation);
+            if (openBraceNewLeadingTrivia is not null)
             {
-                node = node.WithOpenBraceToken(newNode.Value.AsToken());
-                _indentationCache[node] = expectedIndentation;
-                ChangesApplied = true;
+                ChangesRequired = true;
             }
         }
 
         TextSpan trimmedOpenParentTokenFullSpan = node.OpenBraceToken.GetTrimmedFullSpan();
-        if (CheckOnTheSameLine(node.SyntaxTree, trimmedOpenParentTokenFullSpan, node.CloseBraceToken.FullSpan))
-        {
-            return base.VisitBlock(node);
-        }
-
-        if (node.Statements.Any())
-        {
-            if (CheckOnTheSameLine(node.SyntaxTree, trimmedOpenParentTokenFullSpan, node.Statements[0].FullSpan))
-            {
-                node =
-                    node.WithOpenBraceToken(
-                        node.OpenBraceToken.WithTrailingTrivia(
-                            node.OpenBraceToken.TrailingTrivia.AppendNewLine(_newLine)
-                        )
-                    );
-                _indentationCache[node] = expectedIndentation;
-                ChangesApplied = true;
-            }
-
-            string expectedStatementIndentation = expectedIndentation + _singleIndentation;
-
-            IEnumerable<SyntaxNodeOrToken> children =
-                node.ChildNodesAndTokens()
-                    .Where(
-                        n => n.Kind() is not (SyntaxKind.CloseBraceToken or SyntaxKind.OpenBraceToken)
-                    );
-            foreach (SyntaxNodeOrToken child in children)
-            {
-                if (CheckNothingButTriviaInFront(child))
-                {
-                    SyntaxNodeOrToken? newChild = ReformatLeadingTrivia(child, expectedStatementIndentation);
-                    if (newChild is not null)
-                    {
-                        if (child.IsToken)
-                        {
-                            node = node.ReplaceToken(child.AsToken(), newChild.Value.AsToken());
-                        }
-                        else
-                        {
-                            node = node.ReplaceNode(child.AsNode()!, newChild.Value.AsNode()!);
-                        }
-
-                        _indentationCache[node] = expectedIndentation;
-                        ChangesApplied = true;
-                    }
-                }
-            }
-        }
-
-        // Parents are on different lines, but the closing paren is not on its own line, so move it to the next line
-        if (!CheckNothingButTriviaInFront(node.CloseBraceToken))
+        if (!CheckOnTheSameLine(node.SyntaxTree, trimmedOpenParentTokenFullSpan, node.CloseBraceToken.FullSpan))
         {
             if (node.Statements.Any())
             {
-                StatementSyntax lastStatement = node.Statements.Last();
+                if (CheckOnTheSameLine(node.SyntaxTree, trimmedOpenParentTokenFullSpan, node.Statements[0].FullSpan))
+                {
+                    openBraceNewTrailingTrivia = node.OpenBraceToken.TrailingTrivia.AppendNewLine(_newLine);
+                    ChangesRequired = true;
+                }
 
-                StatementSyntax newLastStatement =
-                    lastStatement.WithTrailingTrivia(
-                        lastStatement.GetTrailingTrivia().AppendNewLine(_newLine)
-                    );
+                string expectedStatementIndentation = expectedIndentation + _singleIndentation;
 
-                node = node.ReplaceNode(lastStatement, newLastStatement);
+                IEnumerable<SyntaxNodeOrToken> children =
+                    node.ChildNodesAndTokens()
+                        .Where(
+                            n => n.Kind() is not (SyntaxKind.CloseBraceToken or SyntaxKind.OpenBraceToken)
+                        );
+                foreach (SyntaxNodeOrToken child in children)
+                {
+                    if (CheckNothingButTriviaInFront(child))
+                    {
+                        SyntaxTriviaList? newLeadingTrivia = ReformatLeadingTrivia(child, expectedStatementIndentation);
+                        if (newLeadingTrivia is not null)
+                        {
+                            replacements.Add((child, newLeadingTrivia.Value));
+                            ChangesRequired = true;
+                        }
+                    }
+                }
+            }
+
+            // Parents are on different lines, but the closing paren is not on its own line, so move it to the next line
+            if (!CheckNothingButTriviaInFront(node.CloseBraceToken))
+            {
+                if (node.Statements.Any())
+                {
+                    StatementSyntax lastStatement = node.Statements.Last();
+
+                    lastStatementNewTrailingTrivia = lastStatement.GetTrailingTrivia().AppendNewLine(_newLine);
+                }
+                else
+                {
+                    // If parens are on the different lines but there are no arguments,
+                    // then nothing should be in front apart from multiline comments attached to the open paren
+                    openBraceNewTrailingTrivia =
+                        (openBraceNewTrailingTrivia ?? node.OpenBraceToken.TrailingTrivia).AppendNewLine(_newLine);
+                }
+
+                ChangesRequired = true;
+            }
+
+            closeBraceNewLeadingTrivia =
+                ReformatLeadingTrivia(node.CloseBraceToken, expectedIndentation + _singleIndentation, expectedIndentation);
+            if (closeBraceNewLeadingTrivia is not null)
+            {
+                ChangesRequired = true;
+            }
+        }
+
+        BlockSyntax? resultNode = (BlockSyntax?)base.VisitBlock(node);
+        if (resultNode is null)
+        {
+            return null;
+        }
+
+        if (openBraceNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithOpenBraceToken(resultNode.OpenBraceToken.WithLeadingTrivia(openBraceNewLeadingTrivia));
+        }
+
+        if (openBraceNewTrailingTrivia is not null)
+        {
+            resultNode = resultNode.WithOpenBraceToken(resultNode.OpenBraceToken.WithTrailingTrivia(openBraceNewTrailingTrivia));
+        }
+
+        if (closeBraceNewLeadingTrivia is not null)
+        {
+            resultNode = resultNode.WithCloseBraceToken(resultNode.CloseBraceToken.WithLeadingTrivia(closeBraceNewLeadingTrivia));
+        }
+
+        if (lastStatementNewTrailingTrivia is not null)
+        {
+            StatementSyntax lastStatement = resultNode.Statements.Last();
+            StatementSyntax newLastStatement = lastStatement.WithTrailingTrivia(lastStatementNewTrailingTrivia);
+            resultNode = resultNode.ReplaceNode(lastStatement, newLastStatement);
+        }
+
+        foreach ((SyntaxNodeOrToken element, SyntaxTriviaList newLeadingTrivia) in replacements)
+        {
+            if (element.IsToken)
+            {
+                SyntaxToken syntaxToken = element.AsToken();
+                resultNode = resultNode.ReplaceToken(syntaxToken, syntaxToken.WithLeadingTrivia(newLeadingTrivia));
             }
             else
             {
-                // If parens are on the different lines but there are no arguments,
-                // then nothing should be in front apart from multiline comments attached to the open paren
-                node =
-                    node.WithOpenBraceToken(
-                        node.OpenBraceToken.WithTrailingTrivia(
-                            node.OpenBraceToken.TrailingTrivia.AppendNewLine(_newLine)
-                        )
-                    );
+                SyntaxNode syntaxNode = element.AsNode()!;
+                resultNode = resultNode.ReplaceNode(syntaxNode, syntaxNode.WithLeadingTrivia(newLeadingTrivia));
             }
-
-            _indentationCache[node] = expectedIndentation;
-            ChangesApplied = true;
         }
 
-        SyntaxNodeOrToken? newToken =
-            ReformatLeadingTrivia(node.CloseBraceToken, expectedIndentation + _singleIndentation, expectedIndentation);
-        if (newToken is not null)
-        {
-            node = node.WithCloseBraceToken(newToken.Value.AsToken());
-            _indentationCache[node] = expectedIndentation;
-            ChangesApplied = true;
-        }
-
-        return base.VisitBlock(node);
+        return resultNode;
     }
 
     // public override SyntaxNode? VisitSelectClause(SelectClauseSyntax node)
@@ -1288,7 +1451,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         return node;
     }
 
-    private SyntaxNodeOrToken? ReformatLeadingTrivia(
+    private SyntaxTriviaList? ReformatLeadingTrivia(
         SyntaxNodeOrToken node,
         string expectedIndentation
     )
@@ -1296,7 +1459,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         return ReformatLeadingTrivia(node, expectedIndentation, expectedIndentation);
     }
 
-    private SyntaxNodeOrToken? ReformatLeadingTrivia(
+    private SyntaxTriviaList? ReformatLeadingTrivia(
         SyntaxNodeOrToken node,
         string expectedIndentation,
         string expectedLastIndentation
@@ -1310,7 +1473,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                 // No leading trivia and no expected indentation, so nothing to do
                 return null;
             }
-            return node.WithLeadingTrivia(SyntaxFactory.Whitespace(expectedLastIndentation));
+            return new SyntaxTriviaList(SyntaxFactory.Whitespace(expectedLastIndentation));
         }
 
         (bool changesExist, List<SyntaxTrivia> newLeadingTrivia) =
@@ -1351,7 +1514,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
 
         if (changesExist)
         {
-            return node.WithLeadingTrivia(newLeadingTrivia);
+            return new SyntaxTriviaList(newLeadingTrivia);
         }
 
         return null;
