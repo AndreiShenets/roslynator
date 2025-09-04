@@ -3712,7 +3712,8 @@ public class RCS1271FixStructuralHonestyTests :
                 Enumerable.Range(1, 10)
                     .Select(a => a)
                     .Where(b => b > 5)
-                    .Select(c => c).Count();
+                    .Select(c => c)
+                    .Count();
             """,
             options: Options.WithCompilationOptions(
                 Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)

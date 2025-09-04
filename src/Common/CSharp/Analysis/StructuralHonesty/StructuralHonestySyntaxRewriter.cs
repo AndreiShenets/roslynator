@@ -710,12 +710,20 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                 case MemberAccessExpressionSyntax memberAccessExpressionSyntax:
                     topLevelMemberAccessExpression = memberAccessExpressionSyntax;
                     topInvocationExpression = null;
-                    parent = memberAccessExpressionSyntax.Parent;
+                    // We cannot go up beyond the root as the upper elements don't have indentations in the cache.
+                    parent =
+                        ReferenceEquals(_root, memberAccessExpressionSyntax)
+                            ? null
+                            : memberAccessExpressionSyntax.Parent;
                     break;
                 case InvocationExpressionSyntax invocationExpressionSyntax:
                     topInvocationExpression = invocationExpressionSyntax;
                     topLevelMemberAccessExpression = null;
-                    parent = invocationExpressionSyntax.Parent;
+                    // We cannot go up beyond the root as the upper elements don't have indentations in the cache.
+                    parent =
+                        ReferenceEquals(_root, invocationExpressionSyntax)
+                            ? null
+                            : invocationExpressionSyntax.Parent;
                     break;
                 default:
                     parent = null;
@@ -726,6 +734,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         if (topInvocationExpression is not null)
         {
             string? selfIndentation = GetSelfIndentation(topInvocationExpression);
+            if (selfIndentation is null && ReferenceEquals(_root, topInvocationExpression))
+            {
+                selfIndentation = _rootNodeIndentation;
+            }
             if (selfIndentation is not null)
             {
                 return selfIndentation + _singleIndentation;
@@ -735,6 +747,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         if (topLevelMemberAccessExpression is not null)
         {
             string? selfIndentation = GetSelfIndentation(topLevelMemberAccessExpression);
+            if (selfIndentation is null && ReferenceEquals(_root, topLevelMemberAccessExpression))
+            {
+                selfIndentation = _rootNodeIndentation;
+            }
             if (selfIndentation is not null)
             {
                 return selfIndentation;
