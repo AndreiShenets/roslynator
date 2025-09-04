@@ -3720,45 +3720,45 @@ public class RCS1271FixStructuralHonestyTests :
             )
         );
     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Chaining_top_level()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             using System.Linq;
-//
-//             [|[|[|[|[|Enumerable.Range(1, 10).Select(i => i)|]
-//             .Where([|i => {
-//                 return i > 5; }|])|].Where([|i => {
-//             return i > 6; }|])|]
-//             .Select(i => i)|].Count()|];
-//             """,
-//             """
-//             using System.Linq;
-//
-//             Enumerable.Range(1, 10)
-//                 .Select(i => i)
-//                 .Where(
-//                     i =>
-//                     {
-//                         return i > 5;
-//                     }
-//                 )
-//                 .Where(
-//                     i =>
-//                     {
-//                         return i > 6;
-//                     }
-//                 )
-//                 .Select(i => i)
-//                 .Count();
-//             """,
-//             options: Options.WithCompilationOptions(
-//                 Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
-//             )
-//         );
-//     }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Chaining_top_level()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System.Linq;
+
+            [|[|[|[|[|[|[|[|Enumerable.Range(1, 10).Select(i => i)
+            .Where|][|([|i => {
+                return i > 5; }|])|]|].Where|][|([|i => {
+            return i > 6; }|])|]|]
+            .Select|](i => i)|].Count|]()|];
+            """,
+            """
+            using System.Linq;
+
+            Enumerable.Range(1, 10)
+                .Select(i => i)
+                .Where(
+                    i =>
+                    {
+                        return i > 5;
+                    }
+                )
+                .Where(
+                    i =>
+                    {
+                        return i > 6;
+                    }
+                )
+                .Select(i => i)
+                .Count();
+            """,
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
 //
 //     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
 //     public async Task Chaining_as_method_param()
