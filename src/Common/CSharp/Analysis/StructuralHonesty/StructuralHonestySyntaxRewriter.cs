@@ -503,7 +503,8 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         bool leftAndMiddleOnSameLine = CheckOnTheSameLine(syntaxTree, node.Expression.GetTrimmedFullSpan(), node.OperatorToken.FullSpan);
         bool middleAndRightOnSameLine = CheckOnTheSameLine(syntaxTree, trimmedOperatorTokenFullSpan, node.Name.FullSpan);
 
-        (bool multilinePartsBefore, int dotsBefore, int dotsBeforeOnNewLine, int dotsAfter) = AnalyzeChain(node);
+        (bool multilinePartsBefore, int dotsBefore, int dotsBeforeOnNewLine, _, int dotsAfterOnNewLine) =
+            AnalyzeChain(node);
 
         string? expectedIndentationLeft = GetSelfIndentation(node);
         string expectedIndentationMiddle =
@@ -540,9 +541,14 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                 || multilineInMiddle
                 || multilineOnRight
                 || dotsBeforeOnNewLine > 0
+                || dotsAfterOnNewLine > 0
             )
             // This magic number is a preference of complexity or number of dots before the member access expression to trigger the next line
-            && (multilinePartsBefore || dotsBefore > 1 || dotsBeforeOnNewLine > 0)
+            && (multilinePartsBefore
+                || ((dotsBeforeOnNewLine > 0 || dotsAfterOnNewLine > 0)
+                    && dotsBefore > 0
+                )
+            )
         )
         {
             expressionNewTrailingTrivia = node.Expression.GetTrailingTrivia().AppendNewLine(_newLine);
@@ -611,13 +617,21 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         return resultNode;
     }
 
-    private (bool MultilinePartsBefore, int DotsBefore, int DotsBeforeOnNewLine, int DotsAfter)
-        AnalyzeChain(MemberAccessExpressionSyntax node)
+    private readonly record struct ChainAnalysisResult(
+        bool MultilinePartsBefore,
+        int DotsBefore,
+        int DotsBeforeOnNewLine,
+        int DotsAfter,
+        int DotsAfterOnNewLine
+    );
+
+    private ChainAnalysisResult AnalyzeChain(MemberAccessExpressionSyntax node)
     {
         bool multilinePartsBefore = false;
         int dotsBefore = 0;
         int dotsBeforeOnNewLine = 0;
         int dotsAfter = 0;
+        int dotsAfterOnNewLine = 0;
 
         SyntaxTree syntaxTree = node.SyntaxTree;
 
@@ -629,7 +643,11 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
                 case MemberAccessExpressionSyntax memberAccessExpressionSyntax:
                     ++dotsBefore;
                     bool leftAndMiddleOnSameLine =
-                        CheckOnTheSameLine(syntaxTree, node.Expression.GetTrimmedFullSpan(), node.OperatorToken.FullSpan);
+                        CheckOnTheSameLine(
+                            syntaxTree,
+                            memberAccessExpressionSyntax.Expression.GetTrimmedFullSpan(),
+                            memberAccessExpressionSyntax.OperatorToken.FullSpan
+                        );
                     if (!leftAndMiddleOnSameLine)
                     {
                         ++dotsBeforeOnNewLine;
@@ -663,6 +681,18 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             {
                 case MemberAccessExpressionSyntax memberAccessExpressionSyntax:
                     ++dotsAfter;
+
+                    bool leftAndMiddleOnSameLine =
+                        CheckOnTheSameLine(
+                            syntaxTree,
+                            memberAccessExpressionSyntax.Expression.GetTrimmedFullSpan(),
+                            memberAccessExpressionSyntax.OperatorToken.FullSpan
+                        );
+                    if (!leftAndMiddleOnSameLine)
+                    {
+                        ++dotsAfterOnNewLine;
+                    }
+
                     parent = memberAccessExpressionSyntax.Parent;
                     break;
                 case InvocationExpressionSyntax invocationExpressionSyntax:
@@ -674,7 +704,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
             }
         }
 
-        return (multilinePartsBefore, dotsBefore, dotsBeforeOnNewLine, dotsAfter);
+        return new ChainAnalysisResult(multilinePartsBefore, dotsBefore, dotsBeforeOnNewLine, dotsAfter, dotsAfterOnNewLine);
     }
 
     private bool CheckInvocationExpressionSyntaxMultiline(InvocationExpressionSyntax invocationExpressionSyntax)

@@ -3728,7 +3728,7 @@ public class RCS1271FixStructuralHonestyTests :
             """
             using System.Linq;
 
-            [|[|[|[|[|[|[|[|Enumerable.Range(1, 10).Select(i => i)
+            [|[|[|[|[|[|[|[|[|[|Enumerable.Range(1, 10).Select|](i => i)|]
             .Where|][|([|i => {
                 return i > 5; }|])|]|].Where|][|([|i => {
             return i > 6; }|])|]|]
