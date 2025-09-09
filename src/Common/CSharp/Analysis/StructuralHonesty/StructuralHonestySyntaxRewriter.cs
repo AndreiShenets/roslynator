@@ -503,7 +503,7 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         bool leftAndMiddleOnSameLine = CheckOnTheSameLine(syntaxTree, node.Expression.GetTrimmedFullSpan(), node.OperatorToken.FullSpan);
         bool middleAndRightOnSameLine = CheckOnTheSameLine(syntaxTree, trimmedOperatorTokenFullSpan, node.Name.FullSpan);
 
-        (bool multilinePartsBefore, int dotsBefore, int dotsBeforeOnNewLine, _, int dotsAfterOnNewLine) =
+        (bool multilinePartsBefore, int dotsBefore, int dotsBeforeOnNewLine, int dotsAfter, int dotsAfterOnNewLine) =
             AnalyzeChain(node);
 
         string? expectedIndentationLeft = GetSelfIndentation(node);
@@ -539,15 +539,10 @@ public sealed class StructuralHonestySyntaxRewriter : CSharpSyntaxRewriter
         if (leftAndMiddleOnSameLine
             && (multilineOnLeft
                 || multilineInMiddle
-                || multilineOnRight
+                || (multilineOnRight && (dotsBefore > 1 || dotsAfter > 0))
+                || multilinePartsBefore
                 || dotsBeforeOnNewLine > 0
-                || dotsAfterOnNewLine > 0
-            )
-            // This magic number is a preference of complexity or number of dots before the member access expression to trigger the next line
-            && (multilinePartsBefore
-                || ((dotsBeforeOnNewLine > 0 || dotsAfterOnNewLine > 0)
-                    && dotsBefore > 0
-                )
+                || (dotsAfterOnNewLine > 0 && (dotsBefore > 0 || multilineOnRight))
             )
         )
         {

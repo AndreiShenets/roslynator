@@ -3816,118 +3816,119 @@ public class RCS1271FixStructuralHonestyTests :
             )
         );
     }
-//
-//     [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
-//     public async Task Chaining_in_the_chaining_comments_and_complex_accesses()
-//     {
-//         await VerifyDiagnosticAndFixAsync(
-//             """
-//             using System.Linq;
-//
-//                 var x = Enumerable.Range(1, 10).Select(i => new C());
-//                 [|[|x.SelectMany([|c => {
-//                         return [|[|c.M() // Trailing
-//                     // leading
-//                     .M() /*
-//
-//             trailing multiline1
-//             trailing multiline2 */|]
-//                     .M()|]
-//                     ?[|[|.M()!.M()
-//                     .X.X[0]
-//                     .M()|]
-//                     .E
-//                     .SelectMany([|i => {
-//                         return [|[|i.M() // Trailing
-//                             // leading
-//                             .M() /*
-//                         multiline1
-//                         multiline2 */|]
-//                             .M()|]
-//                             ?[|[|.M()!.M()
-//                             .X.X[0]
-//                             .M()|]
-//                             .E
-//                             .Select([|e => {
-//                                 return e;
-//                             }|])|];
-//                     }|])|];
-//                 }|])|].ToList()|];
-//             """,
-//             """
-//             using System.Linq;
-//
-//             var x = Enumerable.Range(1, 10).Select(i => new C());
-//             x
-//                 .SelectMany(
-//                     c =>
-//                     {
-//                         return c.M() // Trailing
-//                             // leading
-//                             .M() /*
-//
-//             trailing multiline1
-//             trailing multiline2 */
-//                             .M()
-//                             ?.M()
-//                             !.M()
-//                             .X
-//                             .X[0]
-//                             .M()
-//                             .E
-//                             .SelectMany(
-//                                 i =>
-//                                 {
-//                                     return i.M() // Trailing
-//                                         // leading
-//                                         .M() /*
-//                                     multiline1
-//                                     multiline2 */
-//                                         .M()
-//                                         ?.M()
-//                                         !.M()
-//                                         .X
-//                                         .X[0]
-//                                         .M()
-//                                         .E
-//                                         .Select(
-//                                             e =>
-//                                             {
-//                                                 return e;
-//                                             }
-//                                         );
-//                                 }
-//                             );
-//                     }
-//                 )
-//                 .ToList();
-//             """,
-//             additionalFiles:
-//                 new (string source, string expectedSource)[]
-//                 {
-//                     (
-//                         source:
-//                         """
-//                         using System.Linq;
-//                         using System.Collections.Generic;
-//
-//                         public sealed class C
-//                         {
-//                             public C X => this;
-//                             public C this[int index] => this;
-//                             public IEnumerable<C> E => Enumerable.Empty<C>();
-//
-//                             public C M() => this;
-//                         }
-//                         """,
-//                         expectedSource: null
-//                     )
-//                 },
-//             options: Options.WithCompilationOptions(
-//                 Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
-//             )
-//         );
-//     }
+
+    [Fact, Trait(Traits.Analyzer, DiagnosticIdentifiers.FixStructuralHonesty)]
+    public async Task Chaining_in_the_chaining_comments_and_complex_accesses()
+    {
+        await VerifyDiagnosticAndFixAsync(
+            """
+            using System.Linq;
+
+                var x = Enumerable.Range(1, 10).Select(i => new C());
+                [|[|[|[|x.SelectMany|][|([|c => {
+                        return [|[|[|[|[|c.M() // Trailing
+                    // leading
+                    .M|]() /*
+
+            trailing multiline1
+            trailing multiline2 */|]
+                    .M|]()|]
+                    ?[|[|[|[|[|[|[|.M()!.M()
+                    .X|].X|][0]
+                    .M|]()|]
+                    .E|]
+                    .SelectMany|][|([|i => {
+                        return [|[|[|[|[|[|[|i.X.X[0].X.M|]() // Trailing|]
+                            // leading
+                            .M|]() /*
+                        multiline1
+                        multiline2 */|]
+                            .M|]()|]
+                            ?[|[|[|[|[|[|[|.M()!.M()
+                            .X|].X|][0]
+                            .M|]()|]
+                            .E|]
+                            .Select|][|([|e => {
+                                return e;
+                            }|])|]|]|];
+                    }|])|]|]|];
+                }|])|]|].ToList|]()|];
+            """,
+            """
+            using System.Linq;
+
+            var x = Enumerable.Range(1, 10).Select(i => new C());
+            x
+                .SelectMany(
+                    c =>
+                    {
+                        return c.M() // Trailing
+                            // leading
+                            .M() /*
+
+            trailing multiline1
+            trailing multiline2 */
+                            .M()
+                            ?.M()
+                            !.M()
+                            .X
+                            .X[0]
+                            .M()
+                            .E
+                            .SelectMany(
+                                i =>
+                                {
+                                    return i.X
+                                        .X[0].X.M() // Trailing
+                                        // leading
+                                        .M() /*
+                                    multiline1
+                                    multiline2 */
+                                        .M()
+                                        ?.M()
+                                        !.M()
+                                        .X
+                                        .X[0]
+                                        .M()
+                                        .E
+                                        .Select(
+                                            e =>
+                                            {
+                                                return e;
+                                            }
+                                        );
+                                }
+                            );
+                    }
+                )
+                .ToList();
+            """,
+            additionalFiles:
+                new (string source, string expectedSource)[]
+                {
+                    (
+                        source:
+                            """
+                            using System.Linq;
+                            using System.Collections.Generic;
+
+                            public sealed class C
+                            {
+                                public C X => this;
+                                public C this[int index] => this;
+                                public IEnumerable<C> E => Enumerable.Empty<C>();
+
+                                public C M() => this;
+                            }
+                            """,
+                        expectedSource: null
+                    )
+                },
+            options: Options.WithCompilationOptions(
+                Options.CompilationOptions.WithOutputKind(OutputKind.ConsoleApplication)
+            )
+        );
+    }
 
     // Chaining in the chained chaining
 
